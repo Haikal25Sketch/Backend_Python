@@ -95,6 +95,18 @@ try:
         print(row)
     print()
 
+    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Berakhiran huruf 'a' -> %a) ---")
+    cursor.execute("SELECT * FROM pengguna WHERE nama LIKE '%a'")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Mengandung huruf 'a' -> %a%) ---")
+    cursor.execute("SELECT * FROM pengguna WHERE nama LIKE '%a%'")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
