@@ -156,6 +156,42 @@ try:
         print(row)
     print()
 
+    # ==========================================
+    # 13. BETWEEN
+    # ==========================================
+    print("--- Hasil SELECT dengan BETWEEN (Mencari pengguna dengan umur 20 sampai 25) ---")
+    cursor.execute("SELECT * FROM pengguna WHERE umur BETWEEN 20 AND 25")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 14. IS NULL & IS NOT NULL
+    # ==========================================
+    print("--- Hasil SELECT dengan IS NOT NULL (Mencari pengguna yang kotanya tidak kosong) ---")
+    # Catatan: Untuk IS NULL, Anda perlu data yang bernilai NULL agar hasil kueri tidak kosong.
+    cursor.execute("SELECT * FROM pengguna WHERE kota IS NOT NULL")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 15. CASE
+    # ==========================================
+    print("--- Hasil SELECT dengan CASE (Mengkategorikan umur pengguna) ---")
+    cursor.execute('''
+        SELECT nama, umur,
+        CASE
+            WHEN umur < 25 THEN 'Muda'
+            WHEN umur BETWEEN 25 AND 30 THEN 'Dewasa'
+            ELSE 'Lainnya'
+        END AS KategoriUmur
+        FROM pengguna
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
