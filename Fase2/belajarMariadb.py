@@ -107,6 +107,55 @@ try:
         print(row)
     print()
 
+    # ==========================================
+    # 8. UPDATE
+    # ==========================================
+    print("--- Hasil UPDATE (Mengubah Kota Budi menjadi 'Tangerang') ---")
+    cursor.execute("UPDATE pengguna SET kota = 'Tangerang' WHERE nama = 'Budi'")
+    conn.commit()
+    cursor.execute("SELECT * FROM pengguna WHERE nama = 'Budi'")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 9. DELETE
+    # ==========================================
+    print("--- Hasil DELETE (Menghapus pengguna bernama 'Bima') ---")
+    cursor.execute("DELETE FROM pengguna WHERE nama = 'Bima'")
+    conn.commit()
+    cursor.execute("SELECT * FROM pengguna")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 10. DISTINCT
+    # ==========================================
+    print("--- Hasil SELECT DISTINCT (Menampilkan Kota secara unik/tanpa duplikat) ---")
+    cursor.execute("SELECT DISTINCT kota FROM pengguna")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 11. ALIAS (AS)
+    # ==========================================
+    print("--- Hasil SELECT ALIAS (Mengganti nama kolom pada hasil Query) ---")
+    cursor.execute("SELECT nama AS 'Nama Lengkap', kota AS 'Domisili' FROM pengguna")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 12. IN
+    # ==========================================
+    print("--- Hasil SELECT dengan IN (Mencari pengguna di Jakarta atau Bandung) ---")
+    cursor.execute("SELECT * FROM pengguna WHERE kota IN ('Jakarta', 'Bandung')")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
