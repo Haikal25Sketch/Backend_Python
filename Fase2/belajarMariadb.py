@@ -21,6 +21,7 @@ try:
     # 1. CREATE TABLE
     # ==========================================
     # Menghapus tabel terlebih dahulu (jika ada) agar bisa di-run berulang kali tanpa error
+    cursor.execute("DROP TABLE IF EXISTS pesanan")
     cursor.execute("DROP TABLE IF EXISTS pengguna")
     
     # Membuat tabel baru
@@ -32,23 +33,43 @@ try:
         kota VARCHAR(100)
     )
     ''')
-    print("✅ CREATE TABLE berhasil (Tabel 'pengguna' siap digunakan).")
+    cursor.execute('''
+    CREATE TABLE pesanan (
+        id_pesanan INT AUTO_INCREMENT PRIMARY KEY,
+        pengguna_id INT,
+        barang VARCHAR(100),
+        jumlah INT
+    )
+    ''')
+    print("✅ CREATE TABLE berhasil (Tabel 'pengguna' dan 'pesanan' siap digunakan).")
 
     # ==========================================
     # 2. INSERT
     # ==========================================
     # Memasukkan banyak data sekaligus ke tabel
-    sql = "INSERT INTO pengguna (nama, umur, kota) VALUES (%s, %s, %s)"
+    sql_pengguna = "INSERT INTO pengguna (nama, umur, kota) VALUES (%s, %s, %s)"
     users = [
         ('Budi', 25, 'Jakarta'),
         ('Siti', 22, 'Bandung'),
         ('Andi', 30, 'Surabaya'),
         ('Ayu', 28, 'Jakarta'),
-        ('Bima', 20, 'Bali')
+        ('Bima', 20, 'Bali'),
+        ('Coki', 24, 'Medan')
     ]
-    cursor.executemany(sql, users)
+    cursor.executemany(sql_pengguna, users)
+    
+    sql_pesanan = "INSERT INTO pesanan (pengguna_id, barang, jumlah) VALUES (%s, %s, %s)"
+    orders = [
+        (1, 'Laptop', 1),
+        (1, 'Mouse', 2),
+        (2, 'Keyboard', 1),
+        (3, 'Monitor', 1),
+        (10, 'Flashdisk', 3)
+    ]
+    cursor.executemany(sql_pesanan, orders)
+    
     conn.commit() # Menyimpan perubahan ke dalam database
-    print(f"✅ INSERT berhasil ({cursor.rowcount} baris data ditambahkan).\n")
+    print("✅ INSERT berhasil (Data pengguna dan pesanan ditambahkan).\n")
 
     # ==========================================
     # 3. SELECT
@@ -187,6 +208,36 @@ try:
             ELSE 'Lainnya'
         END AS KategoriUmur
         FROM pengguna
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 16. LEFT JOIN
+    # ==========================================
+    print("--- Hasil SELECT dengan LEFT JOIN (Menampilkan semua pengguna dan pesanannya, jika ada) ---")
+    # LEFT JOIN: Mengambil semua baris dari tabel kiri (pengguna), dan baris yang cocok dari tabel kanan (pesanan).
+    # Jika tidak ada pesanan, nilai kolom pesanan akan menjadi NULL.
+    cursor.execute('''
+        SELECT pengguna.nama, pesanan.barang, pesanan.jumlah
+        FROM pengguna
+        LEFT JOIN pesanan ON pengguna.id = pesanan.pengguna_id
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 17. RIGHT JOIN
+    # ==========================================
+    print("--- Hasil SELECT dengan RIGHT JOIN (Menampilkan semua pesanan dan nama penggunanya, jika ada) ---")
+    # RIGHT JOIN: Mengambil semua baris dari tabel kanan (pesanan), dan baris yang cocok dari tabel kiri (pengguna).
+    # Jika id pengguna di pesanan tidak ditemukan di tabel pengguna, nilainya akan menjadi NULL.
+    cursor.execute('''
+        SELECT pengguna.nama, pesanan.barang, pesanan.jumlah
+        FROM pengguna
+        RIGHT JOIN pesanan ON pengguna.id = pesanan.pengguna_id
     ''')
     for row in cursor.fetchall():
         print(row)
