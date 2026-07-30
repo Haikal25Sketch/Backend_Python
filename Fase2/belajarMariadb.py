@@ -243,6 +243,49 @@ try:
         print(row)
     print()
 
+    # ==========================================
+    # 18. UNION
+    # ==========================================
+    print("--- Hasil SELECT dengan UNION (Menggabungkan hasil dan menghilangkan duplikat) ---")
+    # UNION: Menggabungkan hasil dari dua SELECT statement. Hasil yang duplikat akan dihilangkan.
+    cursor.execute('''
+        SELECT kota FROM pengguna WHERE umur > 25
+        UNION
+        SELECT kota FROM pengguna WHERE nama LIKE 'B%'
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 19. UNION ALL
+    # ==========================================
+    print("--- Hasil SELECT dengan UNION ALL (Menggabungkan hasil termasuk duplikat) ---")
+    # UNION ALL: Sama seperti UNION, tetapi data yang duplikat tetap ditampilkan.
+    cursor.execute('''
+        SELECT kota FROM pengguna WHERE umur > 25
+        UNION ALL
+        SELECT kota FROM pengguna WHERE nama LIKE 'B%'
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 20. SELF JOIN
+    # ==========================================
+    print("--- Hasil SELECT dengan SELF JOIN ---")
+    # SELF JOIN: Melakukan JOIN pada tabel yang sama. Berguna untuk membandingkan baris-baris dalam satu tabel.
+    # Contoh: Menemukan pasangan pengguna yang tinggal di kota yang sama.
+    cursor.execute('''
+        SELECT A.nama AS Pengguna1, B.nama AS Pengguna2, A.kota
+        FROM pengguna A, pengguna B
+        WHERE A.id < B.id AND A.kota = B.kota
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
