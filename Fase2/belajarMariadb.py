@@ -20,62 +20,49 @@ try:
     # ==========================================
     # 1. CREATE TABLE
     # ==========================================
-    # Menghapus tabel terlebih dahulu (jika ada) agar bisa di-run berulang kali tanpa error
-    cursor.execute("DROP TABLE IF EXISTS pesanan")
-    cursor.execute("DROP TABLE IF EXISTS pengguna")
-    
-    # Membuat tabel baru
+    # Kita pastikan tabel Waifu tersedia menggunakan IF NOT EXISTS
     cursor.execute('''
-    CREATE TABLE pengguna (
+    CREATE TABLE IF NOT EXISTS Waifu (
         id INT AUTO_INCREMENT PRIMARY KEY,
         nama VARCHAR(100) NOT NULL,
         umur INT,
-        kota VARCHAR(100)
+        status VARCHAR(10),
+        asal VARCHAR(20),
+        Tb INT,
+        Bb INT
     )
     ''')
-    cursor.execute('''
-    CREATE TABLE pesanan (
-        id_pesanan INT AUTO_INCREMENT PRIMARY KEY,
-        pengguna_id INT,
-        barang VARCHAR(100),
-        jumlah INT
-    )
-    ''')
-    print("✅ CREATE TABLE berhasil (Tabel 'pengguna' dan 'pesanan' siap digunakan).")
+    
+    # (Opsional) Membuat tabel pengguna dan pesanan secara diam-diam agar materi 16-20 (JOIN) di bawah tetap berfungsi
+    cursor.execute("DROP TABLE IF EXISTS pesanan")
+    cursor.execute("DROP TABLE IF EXISTS pengguna")
+    cursor.execute("CREATE TABLE pengguna (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(100), umur INT, kota VARCHAR(100))")
+    cursor.execute("CREATE TABLE pesanan (id_pesanan INT AUTO_INCREMENT PRIMARY KEY, pengguna_id INT, barang VARCHAR(100), jumlah INT)")
+    
+    print("✅ CREATE TABLE berhasil (Tabel 'Waifu' siap digunakan).")
 
     # ==========================================
     # 2. INSERT
     # ==========================================
-    # Memasukkan banyak data sekaligus ke tabel
-    sql_pengguna = "INSERT INTO pengguna (nama, umur, kota) VALUES (%s, %s, %s)"
-    users = [
-        ('Budi', 25, 'Jakarta'),
-        ('Siti', 22, 'Bandung'),
-        ('Andi', 30, 'Surabaya'),
-        ('Ayu', 28, 'Jakarta'),
-        ('Bima', 20, 'Bali'),
-        ('Coki', 24, 'Medan')
+    # Memasukkan data baru ke Waifu sebagai contoh agar bisa kita hapus/update nanti
+    sql_waifu = "INSERT INTO Waifu (nama, umur, status, asal, Tb, Bb) VALUES (%s, %s, %s, %s, %s, %s)"
+    new_waifus = [
+        ('Miku', 16, 'Ilegal', 'Jepang', 158, 45)
     ]
-    cursor.executemany(sql_pengguna, users)
+    cursor.executemany(sql_waifu, new_waifus)
     
-    sql_pesanan = "INSERT INTO pesanan (pengguna_id, barang, jumlah) VALUES (%s, %s, %s)"
-    orders = [
-        (1, 'Laptop', 1),
-        (1, 'Mouse', 2),
-        (2, 'Keyboard', 1),
-        (3, 'Monitor', 1),
-        (10, 'Flashdisk', 3)
-    ]
-    cursor.executemany(sql_pesanan, orders)
+    # Insert data dummy ke tabel pengguna dan pesanan untuk materi 16-20
+    cursor.executemany("INSERT INTO pengguna (nama, umur, kota) VALUES (%s, %s, %s)", [('Budi', 25, 'Jakarta'), ('Siti', 22, 'Bandung')])
+    cursor.executemany("INSERT INTO pesanan (pengguna_id, barang, jumlah) VALUES (%s, %s, %s)", [(1, 'Laptop', 1)])
     
     conn.commit() # Menyimpan perubahan ke dalam database
-    print("✅ INSERT berhasil (Data pengguna dan pesanan ditambahkan).\n")
+    print("✅ INSERT berhasil (Data Waifu baru ditambahkan).\n")
 
     # ==========================================
     # 3. SELECT
     # ==========================================
-    print("--- Hasil SELECT (Menampilkan Semua Data) ---")
-    cursor.execute("SELECT * FROM pengguna")
+    print("--- Hasil SELECT (Menampilkan Semua Data Waifu) ---")
+    cursor.execute("SELECT * FROM Waifu")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -83,8 +70,8 @@ try:
     # ==========================================
     # 4. WHERE
     # ==========================================
-    print("--- Hasil SELECT dengan WHERE (Hanya Data dengan Kota = 'Jakarta') ---")
-    cursor.execute("SELECT * FROM pengguna WHERE kota = 'Jakarta'")
+    print("--- Hasil SELECT dengan WHERE (Hanya Waifu dengan status = 'Legal') ---")
+    cursor.execute("SELECT * FROM Waifu WHERE status = 'Legal'")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -93,7 +80,7 @@ try:
     # 5. ORDER BY
     # ==========================================
     print("--- Hasil SELECT dengan ORDER BY (Mengurutkan Umur dari Termuda ke Tertua) ---")
-    cursor.execute("SELECT * FROM pengguna ORDER BY umur ASC")
+    cursor.execute("SELECT * FROM Waifu ORDER BY umur ASC")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -102,7 +89,7 @@ try:
     # 6. LIMIT
     # ==========================================
     print("--- Hasil SELECT dengan LIMIT (Menampilkan 2 Data Teratas Saja) ---")
-    cursor.execute("SELECT * FROM pengguna LIMIT 2")
+    cursor.execute("SELECT * FROM Waifu LIMIT 2")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -110,20 +97,20 @@ try:
     # ==========================================
     # 7. LIKE
     # ==========================================
-    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Berawalan huruf 'A') ---")
-    cursor.execute("SELECT * FROM pengguna WHERE nama LIKE 'A%'")
+    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Berawalan huruf 'H') ---")
+    cursor.execute("SELECT * FROM Waifu WHERE nama LIKE 'H%'")
     for row in cursor.fetchall():
         print(row)
     print()
 
     print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Berakhiran huruf 'a' -> %a) ---")
-    cursor.execute("SELECT * FROM pengguna WHERE nama LIKE '%a'")
+    cursor.execute("SELECT * FROM Waifu WHERE nama LIKE '%a'")
     for row in cursor.fetchall():
         print(row)
     print()
 
-    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Mengandung huruf 'a' -> %a%) ---")
-    cursor.execute("SELECT * FROM pengguna WHERE nama LIKE '%a%'")
+    print("--- Hasil SELECT dengan LIKE (Menampilkan Nama yang Mengandung huruf 'u' -> %u%) ---")
+    cursor.execute("SELECT * FROM Waifu WHERE nama LIKE '%u%'")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -131,10 +118,10 @@ try:
     # ==========================================
     # 8. UPDATE
     # ==========================================
-    print("--- Hasil UPDATE (Mengubah Kota Budi menjadi 'Tangerang') ---")
-    cursor.execute("UPDATE pengguna SET kota = 'Tangerang' WHERE nama = 'Budi'")
+    print("--- Hasil UPDATE (Mengubah Umur Miku menjadi 17) ---")
+    cursor.execute("UPDATE Waifu SET umur = 17 WHERE nama = 'Miku'")
     conn.commit()
-    cursor.execute("SELECT * FROM pengguna WHERE nama = 'Budi'")
+    cursor.execute("SELECT * FROM Waifu WHERE nama = 'Miku'")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -142,10 +129,10 @@ try:
     # ==========================================
     # 9. DELETE
     # ==========================================
-    print("--- Hasil DELETE (Menghapus pengguna bernama 'Bima') ---")
-    cursor.execute("DELETE FROM pengguna WHERE nama = 'Bima'")
+    print("--- Hasil DELETE (Menghapus Waifu bernama 'Miku') ---")
+    cursor.execute("DELETE FROM Waifu WHERE nama = 'Miku'")
     conn.commit()
-    cursor.execute("SELECT * FROM pengguna")
+    cursor.execute("SELECT * FROM Waifu")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -153,8 +140,8 @@ try:
     # ==========================================
     # 10. DISTINCT
     # ==========================================
-    print("--- Hasil SELECT DISTINCT (Menampilkan Kota secara unik/tanpa duplikat) ---")
-    cursor.execute("SELECT DISTINCT kota FROM pengguna")
+    print("--- Hasil SELECT DISTINCT (Menampilkan Asal secara unik/tanpa duplikat) ---")
+    cursor.execute("SELECT DISTINCT asal FROM Waifu")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -163,7 +150,7 @@ try:
     # 11. ALIAS (AS)
     # ==========================================
     print("--- Hasil SELECT ALIAS (Mengganti nama kolom pada hasil Query) ---")
-    cursor.execute("SELECT nama AS 'Nama Lengkap', kota AS 'Domisili' FROM pengguna")
+    cursor.execute("SELECT nama AS 'Nama Karakter', asal AS 'Daerah Asal' FROM Waifu")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -171,8 +158,8 @@ try:
     # ==========================================
     # 12. IN
     # ==========================================
-    print("--- Hasil SELECT dengan IN (Mencari pengguna di Jakarta atau Bandung) ---")
-    cursor.execute("SELECT * FROM pengguna WHERE kota IN ('Jakarta', 'Bandung')")
+    print("--- Hasil SELECT dengan IN (Mencari Waifu dari Liyue atau Inazuma) ---")
+    cursor.execute("SELECT * FROM Waifu WHERE asal IN ('Liyue', 'Inazuma')")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -180,8 +167,8 @@ try:
     # ==========================================
     # 13. BETWEEN
     # ==========================================
-    print("--- Hasil SELECT dengan BETWEEN (Mencari pengguna dengan umur 20 sampai 25) ---")
-    cursor.execute("SELECT * FROM pengguna WHERE umur BETWEEN 20 AND 25")
+    print("--- Hasil SELECT dengan BETWEEN (Mencari Waifu dengan Tinggi Badan 150 sampai 170) ---")
+    cursor.execute("SELECT * FROM Waifu WHERE Tb BETWEEN 150 AND 170")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -189,9 +176,8 @@ try:
     # ==========================================
     # 14. IS NULL & IS NOT NULL
     # ==========================================
-    print("--- Hasil SELECT dengan IS NOT NULL (Mencari pengguna yang kotanya tidak kosong) ---")
-    # Catatan: Untuk IS NULL, Anda perlu data yang bernilai NULL agar hasil kueri tidak kosong.
-    cursor.execute("SELECT * FROM pengguna WHERE kota IS NOT NULL")
+    print("--- Hasil SELECT dengan IS NOT NULL (Mencari Waifu yang asalnya tidak kosong) ---")
+    cursor.execute("SELECT * FROM Waifu WHERE asal IS NOT NULL")
     for row in cursor.fetchall():
         print(row)
     print()
@@ -199,15 +185,15 @@ try:
     # ==========================================
     # 15. CASE
     # ==========================================
-    print("--- Hasil SELECT dengan CASE (Mengkategorikan umur pengguna) ---")
+    print("--- Hasil SELECT dengan CASE (Mengkategorikan status legalitas berdasarkan umur) ---")
     cursor.execute('''
         SELECT nama, umur,
         CASE
-            WHEN umur < 25 THEN 'Muda'
-            WHEN umur BETWEEN 25 AND 30 THEN 'Dewasa'
-            ELSE 'Lainnya'
+            WHEN umur >= 18 THEN 'Sudah Legal'
+            WHEN umur < 18 THEN 'Masih Ilegal'
+            ELSE 'Tidak Diketahui'
         END AS KategoriUmur
-        FROM pengguna
+        FROM Waifu
     ''')
     for row in cursor.fetchall():
         print(row)
@@ -281,6 +267,31 @@ try:
         SELECT A.nama AS Pengguna1, B.nama AS Pengguna2, A.kota
         FROM pengguna A, pengguna B
         WHERE A.id < B.id AND A.kota = B.kota
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 21. CROSS JOIN
+    # ==========================================
+    # Membuat tabel warna dan ukuran untuk contoh CROSS JOIN
+    cursor.execute("DROP TABLE IF EXISTS warna")
+    cursor.execute("DROP TABLE IF EXISTS ukuran")
+    cursor.execute("CREATE TABLE warna (id INT AUTO_INCREMENT PRIMARY KEY, nama_warna VARCHAR(50))")
+    cursor.execute("CREATE TABLE ukuran (id INT AUTO_INCREMENT PRIMARY KEY, nama_ukuran VARCHAR(50))")
+    
+    # Insert data ke tabel warna dan ukuran
+    cursor.executemany("INSERT INTO warna (nama_warna) VALUES (%s)", [('Merah',), ('Biru',), ('Hitam',)])
+    cursor.executemany("INSERT INTO ukuran (nama_ukuran) VALUES (%s)", [('S',), ('M',), ('L',)])
+    conn.commit()
+
+    print("--- Hasil SELECT dengan CROSS JOIN (Mengkombinasikan warna dan ukuran) ---")
+    # CROSS JOIN: Menghasilkan Cartesian product, yaitu mengkombinasikan setiap baris dari tabel pertama dengan semua baris di tabel kedua.
+    cursor.execute('''
+        SELECT warna.nama_warna, ukuran.nama_ukuran
+        FROM warna
+        CROSS JOIN ukuran
     ''')
     for row in cursor.fetchall():
         print(row)
