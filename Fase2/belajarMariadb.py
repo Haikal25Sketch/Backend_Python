@@ -297,6 +297,36 @@ try:
         print(row)
     print()
 
+    # ==========================================
+    # 22. GROUP BY & FUNGSI AGREGAT
+    # ==========================================
+    # Membuat tabel customer dan orders untuk contoh GROUP BY dan Agregat
+    cursor.execute("DROP TABLE IF EXISTS orders")
+    cursor.execute("DROP TABLE IF EXISTS customer")
+    cursor.execute("CREATE TABLE customer (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(100), negara VARCHAR(50))")
+    cursor.execute("CREATE TABLE orders (id INT AUTO_INCREMENT PRIMARY KEY, customer_id INT, total_harga DECIMAL(10,2))")
+    
+    # Insert data ke tabel customer dan orders
+    cursor.executemany("INSERT INTO customer (nama, negara) VALUES (%s, %s)", 
+                       [('Andi', 'Indonesia'), ('Budi', 'Indonesia'), ('Charlie', 'Singapura'), ('David', 'Malaysia')])
+    cursor.executemany("INSERT INTO orders (customer_id, total_harga) VALUES (%s, %s)", 
+                       [(1, 50000), (1, 150000), (2, 200000), (3, 75000), (3, 125000), (3, 300000)])
+    conn.commit()
+
+    print("--- Hasil SELECT dengan GROUP BY dan FUNGSI AGREGAT ---")
+    # FUNGSI AGREGAT: Menghitung nilai dari sekumpulan data (misal: SUM, COUNT, AVG, MAX, MIN).
+    # GROUP BY: Mengelompokkan baris yang memiliki nilai yang sama ke dalam ringkasan baris.
+    # Contoh: Menghitung total belanja dan jumlah pesanan per pelanggan.
+    cursor.execute('''
+        SELECT customer.nama, COUNT(orders.id) AS jumlah_pesanan, SUM(orders.total_harga) AS total_belanja
+        FROM customer
+        LEFT JOIN orders ON customer.id = orders.customer_id
+        GROUP BY customer.id, customer.nama
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
