@@ -327,6 +327,63 @@ try:
         print(row)
     print()
 
+    # ==========================================
+    # 23. HAVING
+    # ==========================================
+    print("--- Hasil SELECT dengan HAVING ---")
+    # HAVING digunakan untuk memfilter hasil GROUP BY (karena WHERE tidak bisa menggunakan fungsi agregat)
+    # Contoh: Menampilkan customer yang total belanjanya lebih dari 100.000
+    cursor.execute('''
+        SELECT customer.nama, SUM(orders.total_harga) AS total_belanja
+        FROM customer
+        JOIN orders ON customer.id = orders.customer_id
+        GROUP BY customer.id, customer.nama
+        HAVING total_belanja > 100000
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 24. SUBQUERY
+    # ==========================================
+    print("--- Hasil SELECT dengan SUBQUERY ---")
+    # Subquery adalah query di dalam query.
+    # Contoh: Menampilkan daftar order yang total harganya di atas rata-rata keseluruhan order
+    cursor.execute('''
+        SELECT customer.nama, orders.total_harga
+        FROM customer
+        JOIN orders ON customer.id = orders.customer_id
+        WHERE orders.total_harga > (SELECT AVG(total_harga) FROM orders)
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 25. URUTAN EKSEKUSI SQL
+    # ==========================================
+    print("--- URUTAN EKSEKUSI SQL ---")
+    print("""Urutan eksekusi SQL oleh sistem database:
+FROM
+↓
+JOIN
+↓
+WHERE
+↓
+GROUP BY
+↓
+Agregasi (COUNT/SUM/...)
+↓
+HAVING
+↓
+SELECT
+↓
+ORDER BY
+↓
+LIMIT""")
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
