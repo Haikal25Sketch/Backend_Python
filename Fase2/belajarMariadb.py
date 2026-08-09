@@ -361,7 +361,36 @@ try:
     print()
 
     # ==========================================
-    # 25. URUTAN EKSEKUSI SQL
+    # 25. IN (Subquery)
+    # ==========================================
+    print("--- Hasil SELECT dengan IN (Subquery) ---")
+    # Contoh: Menampilkan customer yang pernah melakukan order
+    cursor.execute('''
+        SELECT * FROM customer 
+        WHERE id IN (SELECT customer_id FROM orders)
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 26. EXISTS
+    # ==========================================
+    print("--- Hasil SELECT dengan EXISTS ---")
+    # EXISTS digunakan untuk memeriksa apakah sebuah subquery mengembalikan setidaknya satu baris.
+    # Contoh: Menampilkan customer yang pernah melakukan order
+    cursor.execute('''
+        SELECT * FROM customer c
+        WHERE EXISTS (
+            SELECT 1 FROM orders o WHERE o.customer_id = c.id
+        )
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 27. URUTAN EKSEKUSI SQL
     # ==========================================
     print("--- URUTAN EKSEKUSI SQL ---")
     print("""Urutan eksekusi SQL oleh sistem database:
