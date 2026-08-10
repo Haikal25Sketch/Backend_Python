@@ -390,7 +390,39 @@ try:
     print()
 
     # ==========================================
-    # 27. URUTAN EKSEKUSI SQL
+    # 27. ANY
+    # ==========================================
+    print("--- Hasil SELECT dengan ANY ---")
+    # ANY membandingkan nilai dengan salah satu nilai yang dihasilkan oleh subquery.
+    # Mengembalikan TRUE jika ada setidaknya satu perbandingan yang benar.
+    # Contoh: Menampilkan Waifu yang umurnya lebih besar dari *salah satu* Waifu asal Jepang
+    cursor.execute('''
+        SELECT nama, umur, asal 
+        FROM Waifu 
+        WHERE umur > ANY (SELECT umur FROM Waifu WHERE asal = 'Jepang')
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 28. ALL
+    # ==========================================
+    print("--- Hasil SELECT dengan ALL ---")
+    # ALL membandingkan nilai dengan semua nilai yang dihasilkan oleh subquery.
+    # Mengembalikan TRUE hanya jika semua perbandingan benar.
+    # Contoh: Menampilkan Waifu yang tinggi badannya (Tb) lebih besar dari *semua* Waifu asal Liyue
+    cursor.execute('''
+        SELECT nama, Tb, asal 
+        FROM Waifu 
+        WHERE Tb > ALL (SELECT Tb FROM Waifu WHERE asal = 'Liyue')
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 29. URUTAN EKSEKUSI SQL
     # ==========================================
     print("--- URUTAN EKSEKUSI SQL ---")
     print("""Urutan eksekusi SQL oleh sistem database:
