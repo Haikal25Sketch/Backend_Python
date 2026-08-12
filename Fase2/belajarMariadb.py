@@ -445,6 +445,21 @@ ORDER BY
 LIMIT""")
     print()
 
+    # ==========================================
+    # 30. DERIVED TABLE
+    # ==========================================
+    print("--- Hasil SELECT dengan DERIVED TABLE (Contoh 1) ---")
+    cursor.execute("SELECT * FROM(SELECT C.nama AS Nama,SUM(O.total_harga) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.nama,C.id) AS X;")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil SELECT dengan DERIVED TABLE (Contoh 2) ---")
+    cursor.execute("SELECT * FROM(SELECT C.nama AS Nama,SUM(O.total_harga) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.nama,C.id) AS X WHERE X.Total_Belanja >(SELECT AVG(Rata_rata.Total_Belanja) FROM(SELECT SUM(total_harga) AS Total_Belanja FROM orders GROUP BY customer_id) AS Rata_rata);")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
