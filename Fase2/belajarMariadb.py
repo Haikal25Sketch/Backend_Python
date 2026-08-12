@@ -510,14 +510,7 @@ LIMIT""")
     # Contoh 1: Sesuai referensi, menggunakan CTE untuk mencari customer yang total
     # belanjanya di atas rata-rata semua customer.
     cursor.execute('''
-        WITH Total_customer AS (
-            SELECT C.id AS Id, C.nama AS Nama_Customer, SUM(O.total_harga) AS Total_Belanja 
-            FROM customer AS C 
-            JOIN orders AS O ON O.customer_id = C.id 
-            GROUP BY C.id, C.nama
-        ) 
-        SELECT * FROM Total_customer 
-        WHERE Total_Belanja > (SELECT AVG(Total_Belanja) FROM Total_customer);
+        WITH Total_customer AS(SELECT C.id AS Id,C.nama AS Nama_Customer,SUM(O.total) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.id,C.nama) SELECT * FROM Total_customer WHERE Total_Belanja > (SELECT AVG(Total_Belanja) FROM Total_customer);
     ''')
     for row in cursor.fetchall():
         print(row)
@@ -588,12 +581,8 @@ LIMIT""")
     # RANK(): Memberikan peringkat. Jika ada nilai yang sama, mereka akan mendapat
     # peringkat yang sama. Namun, urutan (peringkat) berikutnya akan dilompati
     # sesuai jumlah data yang kembar (contoh: 1, 2, 2, 4).
-    #
-    # Untuk melihat efeknya secara jelas, mari tambahkan dulu satu transaksi duplikat
-    # sehingga ada total_harga yang sama.
-    cursor.execute("INSERT INTO orders (customer_id, total_harga) VALUES (3, 125000)")
-    conn.commit()
     
+
     cursor.execute('''
         SELECT id, customer_id, total_harga,
                RANK() OVER(ORDER BY total_harga DESC) AS peringkat
