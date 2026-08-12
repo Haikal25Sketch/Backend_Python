@@ -499,6 +499,136 @@ LIMIT""")
         print(row)
     print()
 
+    # ==========================================
+    # 31. CTE (Common Table Expression)
+    # ==========================================
+    # CTE (Common Table Expression) pada dasarnya mirip dengan Derived Table, tetapi
+    # didefinisikan menggunakan klausa WITH di awal statement query. 
+    # CTE lebih mudah dibaca, rapi, dan bisa dipanggil berkali-kali di dalam query yang sama.
+    
+    print("--- Hasil SELECT dengan CTE (Contoh 1) ---")
+    # Contoh 1: Sesuai referensi, menggunakan CTE untuk mencari customer yang total
+    # belanjanya di atas rata-rata semua customer.
+    cursor.execute('''
+        WITH Total_customer AS (
+            SELECT C.id AS Id, C.nama AS Nama_Customer, SUM(O.total_harga) AS Total_Belanja 
+            FROM customer AS C 
+            JOIN orders AS O ON O.customer_id = C.id 
+            GROUP BY C.id, C.nama
+        ) 
+        SELECT * FROM Total_customer 
+        WHERE Total_Belanja > (SELECT AVG(Total_Belanja) FROM Total_customer);
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil SELECT dengan CTE (Contoh 2) ---")
+    # Contoh 2: Menggunakan CTE untuk mencari rata-rata frekuensi/jumlah transaksi dari seluruh pelanggan.
+    # (Bukan dari sisi nominal, melainkan jumlah aktivitas order-nya).
+    cursor.execute('''
+        WITH Transaksi_Per_Customer AS (
+            SELECT customer_id, COUNT(id) AS jumlah_transaksi
+            FROM orders
+            GROUP BY customer_id
+        )
+        SELECT AVG(jumlah_transaksi) AS Rata_rata_transaksi
+        FROM Transaksi_Per_Customer;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    # ==========================================
+    # 32. WINDOW FUNCTION
+    # ==========================================
+    # Window Function melakukan kalkulasi pada sekumpulan baris (disebut "window")
+    # yang memiliki keterkaitan dengan baris saat ini. Berbeda dengan GROUP BY yang
+    # menggabungkan baris ke dalam satu ringkasan, Window Function tetap
+    # mempertahankan baris aslinya dan hanya menambahkan kolom hasil kalkulasi.
+    
+    print("--- Hasil WINDOW FUNCTION: OVER() ---")
+    # OVER(): Berfungsi untuk mendefinisikan "window". Jika argumen OVER() dibiarkan
+    # kosong, maka window akan mencakup semua baris yang dikembalikan oleh query.
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               SUM(total_harga) OVER() AS total_keseluruhan
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil WINDOW FUNCTION: PARTITION BY ---")
+    # PARTITION BY: Membagi window (seluruh data) menjadi kelompok-kelompok yang lebih
+    # kecil berdasarkan nilai pada kolom tertentu. Kalkulasi (seperti SUM) akan
+    # berjalan secara independen untuk tiap partisi.
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               SUM(total_harga) OVER(PARTITION BY customer_id) AS total_per_customer
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil WINDOW FUNCTION: ROW_NUMBER() ---")
+    # ROW_NUMBER(): Memberikan urutan/nomor baris secara sekuensial pada tiap baris di 
+    # dalam partisi (atau semua data jika tidak ada partisi), tanpa memedulikan apakah nilainya kembar atau tidak.
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               ROW_NUMBER() OVER(ORDER BY total_harga DESC) AS urutan
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil WINDOW FUNCTION: RANK() ---")
+    # RANK(): Memberikan peringkat. Jika ada nilai yang sama, mereka akan mendapat
+    # peringkat yang sama. Namun, urutan (peringkat) berikutnya akan dilompati
+    # sesuai jumlah data yang kembar (contoh: 1, 2, 2, 4).
+    #
+    # Untuk melihat efeknya secara jelas, mari tambahkan dulu satu transaksi duplikat
+    # sehingga ada total_harga yang sama.
+    cursor.execute("INSERT INTO orders (customer_id, total_harga) VALUES (3, 125000)")
+    conn.commit()
+    
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               RANK() OVER(ORDER BY total_harga DESC) AS peringkat
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil WINDOW FUNCTION: DENSE_RANK() ---")
+    # DENSE_RANK(): Sama dengan RANK (memberi peringkat sama pada nilai kembar),
+    # akan tetapi urutan/peringkat berikutnya TIDAK DILOMPATI (contoh: 1, 2, 2, 3).
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               DENSE_RANK() OVER(ORDER BY total_harga DESC) AS peringkat_padat
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- GABUNGAN: ROW_NUMBER vs RANK vs DENSE_RANK ---")
+    # Tabel komparasi untuk melihat jelas perbedaan perhitungan ketiganya
+    # secara bersamaan saat dihadapkan pada nilai (total_harga) yang kembar.
+    cursor.execute('''
+        SELECT id, customer_id, total_harga,
+               ROW_NUMBER() OVER(ORDER BY total_harga DESC) AS row_num,
+               RANK() OVER(ORDER BY total_harga DESC) AS rnk,
+               DENSE_RANK() OVER(ORDER BY total_harga DESC) AS dense_rnk
+        FROM orders;
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
