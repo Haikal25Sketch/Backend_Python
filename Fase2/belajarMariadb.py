@@ -482,6 +482,23 @@ LIMIT""")
         print(row)
     print()
 
+    print("--- Hasil SELECT dengan DERIVED TABLE di dalam JOIN (Contoh 4) ---")
+    # Contoh 4: Menggunakan Derived Table secara langsung di dalam klausa JOIN.
+    # Kita menggabungkan tabel customer utama dengan sebuah Derived Table (alias 'TotalOrder')
+    # yang menghitung jumlah total belanja per customer dari tabel orders.
+    cursor.execute('''
+        SELECT c.nama, c.negara, TotalOrder.total_belanja
+        FROM customer c
+        JOIN (
+            SELECT customer_id, SUM(total_harga) AS total_belanja
+            FROM orders
+            GROUP BY customer_id
+        ) AS TotalOrder ON c.id = TotalOrder.customer_id
+    ''')
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
 
