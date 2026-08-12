@@ -448,6 +448,10 @@ LIMIT""")
     # ==========================================
     # 30. DERIVED TABLE
     # ==========================================
+    # Derived Table (tabel turunan) adalah tabel sementara yang dihasilkan oleh subquery
+    # di dalam klausa FROM. Kita memperlakukan hasil subquery tersebut seolah-olah itu
+    # adalah tabel fisik sungguhan. Syarat wajibnya, setiap derived table harus diberi ALIAS.
+    
     print("--- Hasil SELECT dengan DERIVED TABLE (Contoh 1) ---")
     cursor.execute("SELECT * FROM(SELECT C.nama AS Nama,SUM(O.total_harga) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.nama,C.id) AS X;")
     for row in cursor.fetchall():
@@ -456,6 +460,24 @@ LIMIT""")
 
     print("--- Hasil SELECT dengan DERIVED TABLE (Contoh 2) ---")
     cursor.execute("SELECT * FROM(SELECT C.nama AS Nama,SUM(O.total_harga) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.nama,C.id) AS X WHERE X.Total_Belanja >(SELECT AVG(Rata_rata.Total_Belanja) FROM(SELECT SUM(total_harga) AS Total_Belanja FROM orders GROUP BY customer_id) AS Rata_rata);")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+
+    print("--- Hasil SELECT dengan DERIVED TABLE (Contoh 3) ---")
+    # Contoh 3: Menampilkan nama pelanggan dan jumlah pesanannya, tetapi hanya untuk
+    # pelanggan yang jumlah pesanannya lebih dari 1. Kita jadikan hasil perhitungan
+    # COUNT() sebagai Derived Table dengan alias 'T'.
+    cursor.execute('''
+        SELECT T.nama, T.jumlah_order 
+        FROM (
+            SELECT c.nama, COUNT(o.id) as jumlah_order 
+            FROM customer c 
+            JOIN orders o ON c.id = o.customer_id 
+            GROUP BY c.id, c.nama
+        ) AS T 
+        WHERE T.jumlah_order > 1
+    ''')
     for row in cursor.fetchall():
         print(row)
     print()
