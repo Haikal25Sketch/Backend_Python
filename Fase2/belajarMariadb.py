@@ -303,14 +303,13 @@ try:
     # Membuat tabel customer dan orders untuk contoh GROUP BY dan Agregat
     cursor.execute("DROP TABLE IF EXISTS orders")
     cursor.execute("DROP TABLE IF EXISTS customer")
-    cursor.execute("CREATE TABLE customer (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(100), negara VARCHAR(50))")
-    cursor.execute("CREATE TABLE orders (id INT AUTO_INCREMENT PRIMARY KEY, customer_id INT, total_harga DECIMAL(10,2))")
+    cursor.execute('''CREATE TABLE customer (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(100),umur INT ,kota VARCHAR(50))''')
+    cursor.execute('''CREATE TABLE orders (id INT AUTO_INCREMENT PRIMARY KEY, customer_id INT, total_harga DECIMAL(10,2))''')
     
     # Insert data ke tabel customer dan orders
-    cursor.executemany("INSERT INTO customer (nama, negara) VALUES (%s, %s)", 
-                       [('Andi', 'Indonesia'), ('Budi', 'Indonesia'), ('Charlie', 'Singapura'), ('David', 'Malaysia')])
-    cursor.executemany("INSERT INTO orders (customer_id, total_harga) VALUES (%s, %s)", 
-                       [(1, 50000), (1, 150000), (2, 200000), (3, 75000), (3, 125000), (3, 300000)])
+    cursor.executemany("INSERT INTO customer (nama, umur,kota) VALUES (%s, %s,%s)", 
+                       [('HuTao',15, 'Liyue'), ('Yaemiko',43, 'Inazuma'), ('Chitlali',25, 'Natlan'), ('Sagiri',12, 'Jepang'), ('Furina',17,'Fontaine'), ('Rara',17,'Indonesia')])
+    cursor.executemany("INSERT INTO orders (customer_id, total_harga) VALUES (%s, %s)",     [(1, 10000), (2, 15000), (2, 13400), (4, 17600), (3, 100000), (3, 15000), (6,12500), (2,17800), (2,17800) ])
     conn.commit()
 
     print("--- Hasil SELECT dengan GROUP BY dan FUNGSI AGREGAT ---")
@@ -487,7 +486,7 @@ LIMIT""")
     # Kita menggabungkan tabel customer utama dengan sebuah Derived Table (alias 'TotalOrder')
     # yang menghitung jumlah total belanja per customer dari tabel orders.
     cursor.execute('''
-        SELECT c.nama, c.negara, TotalOrder.total_belanja
+        SELECT c.nama, c.kota, TotalOrder.total_belanja
         FROM customer c
         JOIN (
             SELECT customer_id, SUM(total_harga) AS total_belanja
@@ -510,7 +509,7 @@ LIMIT""")
     # Contoh 1: Sesuai referensi, menggunakan CTE untuk mencari customer yang total
     # belanjanya di atas rata-rata semua customer.
     cursor.execute('''
-        WITH Total_customer AS(SELECT C.id AS Id,C.nama AS Nama_Customer,SUM(O.total) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.id,C.nama) SELECT * FROM Total_customer WHERE Total_Belanja > (SELECT AVG(Total_Belanja) FROM Total_customer);
+        WITH Total_customer AS(SELECT C.id AS Id,C.nama AS Nama_Customer,SUM(O.total_harga) AS Total_Belanja FROM customer AS C JOIN orders AS O ON O.customer_id = C.id GROUP BY C.id,C.nama) SELECT * FROM Total_customer WHERE Total_Belanja > (SELECT AVG(Total_Belanja) FROM Total_customer);
     ''')
     for row in cursor.fetchall():
         print(row)
@@ -617,6 +616,222 @@ LIMIT""")
     for row in cursor.fetchall():
         print(row)
     print()
+
+    # ==========================================
+    # 33. VIEW
+    # ==========================================
+    print("--- Hasil SELECT dari VIEW ---")
+    # Sesuai permintaan, kita tidak akan mengutak-atik (CREATE/ALTER/DROP) VIEW yang sudah ada.
+    # Silakan ubah variabel 'nama_view_anda' di bawah sesuai dengan nama VIEW yang ada di database MariaDB Anda.
+    nama_view = "total_customer" # <-- GANTI DENGAN NAMA VIEW MILIK ANDA
+    try:
+        cursor.execute(f"SELECT * FROM {nama_view}")
+        for row in cursor.fetchall():
+            print(row)
+    except pymysql.Error as err:
+        print(f"Catatan: Gagal memanggil view '{nama_view}'. Ganti dengan nama view Anda yang benar. Error: {err}")
+    print()
+
+    # ==========================================
+    # 34. INDEX
+    # ==========================================
+    print("--- Membuat dan Menggunakan INDEX ---")
+    # INDEX berfungsi untuk mempercepat proses pencarian data (query SELECT).
+    # Contoh: Kita akan membuat index pada kolom 'nama' di tabel 'customer'.
+    try:
+        cursor.execute("DROP INDEX idx_customer_nama ON customer") # Dihapus dulu agar tidak error jika dijalankan ulang
+    except:
+        pass
+
+    cursor.execute("CREATE INDEX idx_customer_nama ON customer(nama)")
+    print("✅ Berhasil membuat INDEX 'idx_customer_nama' pada kolom 'nama' di tabel 'customer'.")
+    print()
+
+    # ==========================================
+    # 35. EXPLAIN
+    # ==========================================
+    print("--- Hasil EXPLAIN (Menganalisa Query) ---")
+    # EXPLAIN digunakan untuk melihat cara MariaDB mengeksekusi suatu query (Execution Plan).
+    # Sangat berguna untuk mengecek apakah query kita sudah optimal dan menggunakan INDEX.
+    cursor.execute("EXPLAIN SELECT * FROM customer WHERE nama = 'HuTao'")
+    
+    # Menampilkan nama-nama kolom dari hasil EXPLAIN agar lebih mudah dibaca
+    kolom_explain = [desc[0] for desc in cursor.description]
+    print(" | ".join(kolom_explain))
+    
+    for row in cursor.fetchall():
+        print(" | ".join(str(val) for val in row))
+    print()
+
+    # ==========================================
+    # 36. SHOW CREATE TABLE
+    # ==========================================
+    print("--- Hasil SHOW CREATE TABLE ---")
+    # Digunakan untuk melihat perintah SQL persis (DDL) yang digunakan saat membuat tabel.
+    cursor.execute("SHOW CREATE TABLE Waifu")
+    for row in cursor.fetchall():
+        print(f"Tabel: {row[0]}")
+        print(f"Query Create:\n{row[1]}")
+    print()
+
+    # ==========================================
+    # 37. SHOW CREATE VIEW & DROP VIEW
+    # ==========================================
+    print("--- Membuat View Dummy sementara untuk materi SHOW CREATE VIEW & DROP VIEW ---")
+    # Kita membuat view baru HANYA SEBAGAI CONTOH agar tidak mengganggu view Anda yang sudah ada.
+    cursor.execute("CREATE OR REPLACE VIEW view_contoh_dummy AS SELECT nama, umur FROM Waifu")
+    print("✅ Berhasil membuat view 'view_contoh_dummy'.")
+    print()
+
+    print("--- Hasil SHOW CREATE VIEW ---")
+    # Digunakan untuk melihat perintah SQL yang membentuk sebuah view.
+    cursor.execute("SHOW CREATE VIEW view_contoh_dummy")
+    for row in cursor.fetchall():
+        print(f"View: {row[0]}")
+        print(f"Query Create:\n{row[1]}")
+    print()
+
+    print("--- Hasil DROP VIEW ---")
+    # Digunakan untuk menghapus sebuah view dari database.
+    cursor.execute("DROP VIEW IF EXISTS view_contoh_dummy")
+    print("✅ Berhasil menghapus view 'view_contoh_dummy'.")
+    print()
+
+    # ==========================================
+    # 38. TRANSAKSI (TRANSACTION)
+    # ==========================================
+    print("--- 38. TRANSAKSI ---")
+    # Membuat tabel dummy khusus untuk contoh transaksi agar tidak mengubah database asli Anda
+    cursor.execute("DROP TABLE IF EXISTS akun_bank")
+    cursor.execute("CREATE TABLE akun_bank (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(50), saldo DECIMAL(10,2))")
+    # Insert data awal
+    cursor.executemany("INSERT INTO akun_bank (nama, saldo) VALUES (%s, %s)", [('Andi', 5000), ('Budi', 3000)])
+    conn.commit() # Simpan data awal
+
+    print("Data awal akun_bank:")
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+
+    # BEGIN / START TRANSACTION dan COMMIT
+    print("--- BEGIN / START TRANSACTION & COMMIT ---")
+    cursor.execute("START TRANSACTION") # atau bisa menggunakan conn.begin()
+    cursor.execute("UPDATE akun_bank SET saldo = saldo - 1000 WHERE nama = 'Andi'")
+    cursor.execute("UPDATE akun_bank SET saldo = saldo + 1000 WHERE nama = 'Budi'")
+    conn.commit() # Menyimpan perubahan secara permanen
+    print("✅ Transaksi transfer Andi ke Budi berhasil di-COMMIT.")
+    
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+
+    # ROLLBACK
+    print("--- ROLLBACK ---")
+    cursor.execute("START TRANSACTION")
+    cursor.execute("UPDATE akun_bank SET saldo = 0 WHERE nama = 'Andi'")
+    print("Membatalkan perubahan dengan ROLLBACK...")
+    conn.rollback() # Membatalkan semua perubahan sejak START TRANSACTION
+    
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+
+    # SAVEPOINT dan ROLLBACK TO SAVEPOINT
+    print("--- SAVEPOINT & ROLLBACK TO SAVEPOINT ---")
+    cursor.execute("START TRANSACTION")
+    cursor.execute("UPDATE akun_bank SET saldo = 10000 WHERE nama = 'Andi'")
+    cursor.execute("SAVEPOINT sp1") # Membuat titik simpan
+    
+    cursor.execute("UPDATE akun_bank SET saldo = 20000 WHERE nama = 'Budi'")
+    print("Perubahan dilakukan pada Andi dan Budi. Melakukan ROLLBACK ke sp1 (hanya membatalkan perubahan Budi)...")
+    cursor.execute("ROLLBACK TO sp1") # Kembali ke sp1
+    conn.commit() # Simpan perubahan Andi (Budi dibatalkan)
+
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+
+    # TRANSACTION + ERROR HANDLING
+    print("--- TRANSACTION + ERROR HANDLING ---")
+    try:
+        cursor.execute("START TRANSACTION")
+        cursor.execute("UPDATE akun_bank SET saldo = saldo - 500 WHERE nama = 'Andi'")
+        # Simulasi error: table yang tidak ada
+        cursor.execute("UPDATE akun_bank_SALAH SET saldo = 0 WHERE nama = 'Budi'")
+        conn.commit()
+    except pymysql.Error as e:
+        print(f"Terjadi error saat transaksi (Disimulasikan): {e}")
+        print("Melakukan ROLLBACK otomatis karena error...")
+        conn.rollback()
+    
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+
+    # AUTOCOMMIT
+    print("--- AUTOCOMMIT ---")
+    # Secara default, Python (pymysql) mematikan autocommit (autocommit = False).
+    # Jika kita mengaktifkannya, setiap statement SQL akan otomatis di-commit tanpa perlu conn.commit().
+    cursor.execute("SET autocommit = 1") # Mengaktifkan autocommit
+    cursor.execute("UPDATE akun_bank SET saldo = 8888 WHERE nama = 'Andi'")
+    print("✅ Perubahan otomatis tersimpan karena AUTOCOMMIT aktif.")
+    
+    cursor.execute("SELECT * FROM akun_bank")
+    for row in cursor.fetchall(): print(row)
+    print()
+    
+    cursor.execute("SET autocommit = 0") # Mengembalikan ke default (autocommit mati)
+
+    # ISOLATION LEVEL
+    print("--- ISOLATION LEVEL (Koneksi/Session, Uncommitted changes, REPEATABLE READ) ---")
+    # Konsep Koneksi/Session: Setiap koneksi (seperti 'conn' ini) memiliki session sendiri.
+    # Perubahan (Uncommitted changes) dalam satu session yang belum di-COMMIT tidak akan terlihat oleh session lain (tergantung Isolation Level).
+    
+    # Menampilkan level isolasi saat ini
+    try:
+        cursor.execute("SELECT @@transaction_isolation")
+        current_iso = cursor.fetchone()[0]
+        print(f"Isolation Level Saat Ini: {current_iso}")
+    except pymysql.Error:
+        # Jika @@transaction_isolation tidak ditemukan (misal di MySQL lama menggunakan @@tx_isolation)
+        cursor.execute("SELECT @@tx_isolation")
+        current_iso = cursor.fetchone()[0]
+        print(f"Isolation Level Saat Ini: {current_iso}")
+
+    # Mengubah level ke REPEATABLE READ (Level Default InnoDB di MariaDB)
+    # REPEATABLE READ: Memastikan bahwa jika kita membaca data yang sama berulang kali dalam satu transaksi,
+    # kita akan selalu mendapatkan hasil yang sama, meskipun ada transaksi lain yang mengubah data tersebut.
+    cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+    print("✅ Level isolasi untuk session ini diubah ke REPEATABLE READ.")
+
+    print("Penjelasan Konsep:")
+    print("- Konsep Session: Transaksi terjadi dalam lingkup session. Jika ada 2 terminal (koneksi) yang menjalankan SQL bersamaan, masing-masing adalah session yang berbeda.")
+    print("- Uncommitted Changes: Jika Session A melakukan UPDATE tapi belum COMMIT, Session B tidak bisa melihat perubahan tersebut.")
+    print("- REPEATABLE READ: Setelah Session A menjalankan SELECT pertama dalam transaksi, semua SELECT berikutnya dalam transaksi yang sama akan melihat versi data yang sama persis dengan SELECT pertama (tidak terpengaruh COMMIT dari Session B).")
+    print()
+
+    print("--- 4 TINGKATAN ISOLATION LEVEL ---")
+    print("READ UNCOMMITTED")
+    print("→ Dirty Read")
+    print()
+    print("READ COMMITTED")
+    print("→ Dirty Read dicegah")
+    print("→ Non-repeatable Read bisa terjadi")
+    print("→ Phantom Read bisa terjadi")
+    print()
+    print("REPEATABLE READ")
+    print("→ Dirty Read dicegah")
+    print("→ Non-repeatable Read dicegah")
+    print("→ snapshot konsisten")
+    print()
+    print("SERIALIZABLE")
+    print("→ isolation paling ketat")
+    print("→ concurrency lebih dibatasi")
+    print("→ locking/blocking bisa terjadi")
+    print()
+
+    # Membersihkan tabel dummy transaksi agar tidak mengotori database
+    cursor.execute("DROP TABLE IF EXISTS akun_bank")
 
 except pymysql.Error as e:
     print(f"Terjadi error pada MariaDB: {e}")
