@@ -67,6 +67,9 @@ class BaseClient:
         self.session.cookies.set("session_id","abc123")
         self.timeout = 10
 
+#Header adalah metadata tentang request.
+#User-Agent adalah salah satu header yang memberi tahu server identitas client.
+
 class WeatherClient(BaseClient):
     def __init__(self,base_url):
         super().__init__()
@@ -102,7 +105,7 @@ class WeatherClient(BaseClient):
             result["timestamp"]=result["timestamp"].isoformat() #mengubah  datetime menjadi string yang bisa diterima json
             save("report.json",result)
             logger.info("DATA CUACA BERHASIL DISIMPAN KE JSON")
-            return report
+            return report_model
 
         except requests.exceptions.RequestException as e:
             logger.error(f"TERJADI MASALAH SAAT MENYAMBUNG KE SERVER : {e}")

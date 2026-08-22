@@ -1,0 +1,41 @@
+[
+    {
+        "name": "pikachu",
+        "weight": 60,
+        "height": 4,
+        "base_experience": 112,
+        "pokemon_type": "electric",
+        "base_hp": 35,
+        "base_attack": 55,
+        "base_defense": 40,
+        "base_special_attack": 50,
+        "base_special_defense": 50,
+        "base_speed": 90
+    },
+    {
+        "name": "charizard",
+        "weight": 905,
+        "height": 17,
+        "base_experience": 240,
+        "pokemon_type": "fire",
+        "base_hp": 78,
+        "base_attack": 84,
+        "base_defense": 78,
+        "base_special_attack": 109,
+        "base_special_defense": 85,
+        "base_speed": 100
+    },
+    {
+        "name": "flygon",
+        "weight": 820,
+        "height": 20,
+        "base_experience": 234,
+        "pokemon_type": "ground",
+        "base_hp": 80,
+        "base_attack": 100,
+        "base_defense": 80,
+        "base_special_attack": 80,
+        "base_special_defense": 80,
+        "base_speed": 100
+    }
+]

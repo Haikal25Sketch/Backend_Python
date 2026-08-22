@@ -257,6 +257,11 @@ try:
         print(row)
     print()
 
+    # Prasyarat mutlak UNION & UNION ALL:
+    # 1. Jumlah kolom sama.
+    # 2. Urutan kolom sama.
+    # 3. Tipe data kolom yang bersesuaian kompatibel.
+    
     # ==========================================
     # 20. SELF JOIN
     # ==========================================

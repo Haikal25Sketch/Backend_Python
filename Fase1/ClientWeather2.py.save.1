@@ -1,0 +1,71 @@
+import json
+import logging
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+from typing import Optional
+from pydantic import BaseModel,ValidationError
+from dataclasses import dataclass,asdict
+from datetime import datetime,date
+import requests
+
+def save (location:str,data:dict) -> None:
+    """Untuk menyimpan data ke json"""
+    with open(location,"w") as file:
+        json.dump(data,file,indent=4)
+
+def ambil(location:str) -> dict:
+    """Untuk mengambil file json"""
+    with open(location,"r") as file:
+        data = json.load(file)
+        return data
+
+def setup_logging():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    file_handler = logging.FileHandler("app2.log")
+    file_handler.setLevel(logging.INFO)
+
+    terminal_handler = logging.StreamHandler()
+    terminal_handler.setLevel(logging.ERROR)
+
+    file_format = logging.Formatter("%(asctime)s | %(level)s | %(name)s | %(message)s ")
+
+    terminal_format = logging.Formatter("%(level)s | %(message)s ")
+
+    file_handler.setFormatter(file_format)
+    terminal_handler.setFormatter(terminal_format)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(terminal_handler)
+
+    return logger
+
+logger = setup_logging()
+
+@dataclass
+class WeatherReport:
+    temperature : str
+    kecepatan_angin : float
+    kelembaban : int
+    timestamp : datetime
+
+class WeatherReport(BaseModel):
+    temperature : str
+    kecepatan_angin : float
+    kelembaban : int
+    timestamp : datetime
+
+class BaseClient:
+
+    def __init__(self):
+        self.session = requests.Session()
+        self.retry = Retry(
+            total = 3
+            backoff_factor = 2,
+            status_forcelist = [429,500,502,503,504])
+        self.adapter = HTTPAdapter(max_retries=self.retry)
+        self.session.mount("https://",self.adapter)
+        self.session.mount("http://",self.adapter)
+        self.session.headers.update({
+        'User-Agent':

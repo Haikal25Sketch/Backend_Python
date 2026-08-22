@@ -1,0 +1,19 @@
+2026-07-20 17:04:15,262 | ERROR | __main__ | TERJADI MASALAH SAAT MELAKUKAN VALIDASI : None 
+2026-07-20 17:04:22,925 | ERROR | __main__ | TERJADI MASALAH SAAT MELAKUKAN VALIDASI : None 
+2026-07-20 17:06:46,182 | ERROR | __main__ | TERJADI MASALAH SAAT MELAKUKAN VALIDASI : 2 validation errors for GithubReportModel
+login
+  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='Haikal25Sketch', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing
+public_repos
+  Input should be a valid integer [type=int_type, input_value=['public_repos'], input_type=list]
+    For further information visit https://errors.pydantic.dev/2.13/v/int_type 
+2026-07-20 17:07:54,144 | ERROR | __main__ | TERJADI MASALAH SAAT MELAKUKAN VALIDASI : 1 validation error for GithubReportModel
+public_repos
+  Input should be a valid integer [type=int_type, input_value=['public_repos'], input_type=list]
+    For further information visit https://errors.pydantic.dev/2.13/v/int_type 
+2026-07-20 17:08:46,803 | ERROR | __main__ | TERJADI MASALAH SAAT MELAKUKAN VALIDASI : 1 validation error for GithubReportModel
+public_repos
+  Input should be a valid integer [type=int_type, input_value=['public_repos'], input_type=list]
+    For further information visit https://errors.pydantic.dev/2.13/v/int_type 
+2026-07-20 17:11:01,086 | INFO | __main__ | DATA GITHUB BERHASIL DIVALIDASI 
+2026-07-20 17:11:01,093 | INFO | __main__ | DATA GITHUB BERHASIL DISIMPAN DI FILE .json 
