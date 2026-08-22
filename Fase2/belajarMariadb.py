@@ -543,7 +543,17 @@ LIMIT""")
     # yang memiliki keterkaitan dengan baris saat ini. Berbeda dengan GROUP BY yang
     # menggabungkan baris ke dalam satu ringkasan, Window Function tetap
     # mempertahankan baris aslinya dan hanya menambahkan kolom hasil kalkulasi.
-    
+    # 
+    # Ringkasan Konsep:
+    # GROUP BY           → baris digabung
+    # WINDOW FUNCTION    → baris dipertahankan
+    # PARTITION BY       → kelompokkan per sesuatu
+    # ORDER BY di OVER() → tentukan urutan dalam kelompok
+    # ROW_NUMBER         → nomor urut
+    # RANK               → ranking, bisa lompat
+    # DENSE_RANK         → ranking, tidak lompat
+    # SUM() OVER()       → total tanpa menghilangkan detail
+
     print("--- Hasil WINDOW FUNCTION: OVER() ---")
     # OVER(): Berfungsi untuk mendefinisikan "window". Jika argumen OVER() dibiarkan
     # kosong, maka window akan mencakup semua baris yang dikembalikan oleh query.
