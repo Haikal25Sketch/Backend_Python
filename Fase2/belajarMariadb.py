@@ -856,3 +856,30 @@ finally:
     if 'conn' in locals() and conn.open:
         cursor.close()
         conn.close()
+
+# ==========================================
+# MATERI PENUTUP: KONSEP ACID DALAM DATABASE
+# ==========================================
+"""
+ACID adalah prinsip dasar yang memastikan transaksi database diproses secara andal. 
+Konsep ini sangat penting dalam sistem database relasional seperti MariaDB.
+
+1. Atomicity (Atomisitas)
+   "All or Nothing" - Sebuah transaksi harus diselesaikan secara penuh (commit) 
+   atau dibatalkan sepenuhnya (rollback) jika terjadi kegagalan. Tidak boleh ada
+   transaksi yang berjalan sebagian.
+
+2. Consistency (Konsistensi)
+   Database harus selalu bertransisi dari satu status valid ke status valid lainnya.
+   Semua data yang ditulis harus mematuhi aturan dan constraint yang ada.
+
+3. Isolation (Isolasi)
+   Setiap transaksi dieksekusi seolah-olah berjalan secara independen. Transaksi
+   yang berjalan bersamaan tidak boleh saling mengganggu hasil akhir.
+
+4. Durability (Daya Tahan)
+   Setelah transaksi berhasil (commit), perubahannya bersifat permanen dan tersimpan
+   dengan aman meskipun terjadi kegagalan sistem (seperti mati listrik atau crash).
+"""
+print("\n--- Materi ACID (Atomicity, Consistency, Isolation, Durability) ---")
+print("Silakan baca dokumentasi di akhir file source code untuk detailnya.\n")
