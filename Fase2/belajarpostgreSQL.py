@@ -5,8 +5,18 @@ import os
 # ==============================================================================
 # MATERI DASAR POSTGRESQL MENGGUNAKAN PYTHON (PSYCOPG2)
 # ==============================================================================
+#
+# File ini berisi materi pembelajaran dasar penggunaan PostgreSQL dengan Python.
+# Setiap bagian akan menjelaskan:
+# 1. Apa itu (pengertian)
+# 2. Apa fungsinya (kegunaan)
+# 3. Contoh kode 
+# 4. Kemungkinan output yang dihasilkan
+# ==============================================================================
 
-# Konfigurasi Database Sementara (Sesuaikan dengan kredensial Anda)
+print("=== BELAJAR DASAR POSTGRESQL DENGAN PYTHON ===\n")
+
+# Konfigurasi Database (Sesuaikan dengan kredensial Anda)
 DB_CONFIG = {
     "dbname": "postgres",
     "user": "postgres",
@@ -15,158 +25,292 @@ DB_CONFIG = {
     "port": "5432"
 }
 
+
 # ------------------------------------------------------------------------------
 # 1. KONEKSI DASAR & EKSEKUSI QUERY
 # ------------------------------------------------------------------------------
-def materi_1_koneksi_dasar():
-    print("\n--- 1. KONEKSI DASAR ---")
-    try:
-        # Membuat koneksi ke database
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # Mengeksekusi query sederhana untuk mendapatkan versi PostgreSQL
-        cursor.execute("SELECT version();")
-        db_version = cursor.fetchone()
-        print(f"Berhasil terhubung. Versi Database: {db_version[0]}")
-        
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"Gagal koneksi dasar: {e}")
+# APA ITU: 
+# Ini adalah cara paling dasar untuk terhubung ke database PostgreSQL menggunakan
+# modul psycopg2.connect().
+#
+# FUNGSI:
+# Menginisialisasi komunikasi antara aplikasi Python kita dan server database PostgreSQL
+# agar bisa mengeksekusi query SQL dan mengambil hasilnya menggunakan kursor (cursor).
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Berhasil terhubung. Versi Database: PostgreSQL 14.x...
+
+print("--- 1. KONEKSI DASAR ---")
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT version();")
+    db_version = cursor.fetchone()
+    print(f"Output: Berhasil terhubung. Versi Database: {db_version[0]}\n")
+    
+    cursor.close()
+    conn.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+
 
 # ------------------------------------------------------------------------------
 # 2. CONNECTION POOLING
 # ------------------------------------------------------------------------------
-# Digunakan untuk me-manage koneksi database yang banyak agar lebih efisien
-# dengan menggunakan kembali (reuse) koneksi yang sudah ada.
-def materi_2_connection_pooling():
-    print("\n--- 2. CONNECTION POOLING ---")
-    try:
-        # Membuat connection pool dengan minimal 1 dan maksimal 10 koneksi
-        connection_pool = psycopg2.pool.SimpleConnectionPool(1, 10, **DB_CONFIG)
+# APA ITU:
+# Connection pool (kolam koneksi) adalah teknik membuat beberapa koneksi database
+# yang disimpan (di-cache) di memori agar tetap terbuka dan siap dipakai kapan saja.
+#
+# FUNGSI:
+# Daripada membuat koneksi baru setiap kali ada request (yang mana ini lambat dan 
+# boros memori), aplikasi cukup meminjam koneksi yang sudah terbuka dari pool.
+# Sangat efisien dan wajib dipakai untuk aplikasi dengan trafik (user) yang banyak.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Tanggal hari ini dari DB: 2026-08-24
+# Output: Semua koneksi di pool ditutup.
+
+print("--- 2. CONNECTION POOLING ---")
+try:
+    connection_pool = psycopg2.pool.SimpleConnectionPool(1, 10, **DB_CONFIG)
+    if connection_pool:
+        conn = connection_pool.getconn()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_date;")
+            print(f"Output: Tanggal hari ini dari DB: {cursor.fetchone()[0]}")
+            cursor.close()
+            connection_pool.putconn(conn)
         
-        if connection_pool:
-            print("Connection pool berhasil dibuat!")
-            
-            # Mengambil koneksi dari pool
-            conn = connection_pool.getconn()
-            if conn:
-                print("Berhasil mengambil koneksi dari pool.")
-                cursor = conn.cursor()
-                cursor.execute("SELECT current_date;")
-                print(f"Tanggal hari ini dari DB: {cursor.fetchone()[0]}")
-                
-                cursor.close()
-                
-                # Mengembalikan koneksi ke dalam pool agar bisa digunakan kembali
-                connection_pool.putconn(conn)
-                print("Koneksi dikembalikan ke pool.")
-                
-            # Menutup semua koneksi di pool (biasanya dipanggil saat aplikasi mati)
-            connection_pool.closeall()
-            print("Semua koneksi di pool ditutup.")
-    except Exception as e:
-        print(f"Error pada connection pooling: {e}")
+        connection_pool.closeall()
+        print("Output: Semua koneksi di pool ditutup.\n")
+except Exception as e:
+    print(f"Output Error: {e}\n")
+
 
 # ------------------------------------------------------------------------------
 # 3. GET POSTGRESQL PROCESS ID (PID)
 # ------------------------------------------------------------------------------
-# Mengetahui Process ID (PID) dari backend PostgreSQL yang melayani koneksi kita saat ini.
-# Berguna untuk debugging atau monitoring (seperti melihat pg_stat_activity).
-def materi_3_pg_backend_pid():
-    print("\n--- 3. MENDAPATKAN POSTGRES PROCESS ID (PID) ---")
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # Mengambil PID dari sesi PostgreSQL saat ini
-        cursor.execute("SELECT pg_backend_pid();")
-        backend_pid = cursor.fetchone()[0]
-        
-        print(f"PostgreSQL Backend Process ID untuk koneksi ini adalah: {backend_pid}")
-        
-        # Bisa juga dibandingkan dengan process ID Python aplikasi kita (walau berbeda environment)
-        print(f"Sebagai perbandingan, Python App PID kita adalah: {os.getpid()}")
-        
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"Error mendapatkan PID: {e}")
+# APA ITU:
+# PID (Process ID) adalah nomor identitas unik yang diberikan oleh sistem operasi
+# (server database) untuk sebuah proses/sesi koneksi yang sedang berjalan.
+#
+# FUNGSI:
+# Berfungsi mengetahui identitas (PID) dari backend PostgreSQL yang sedang 
+# melayani koneksi kita saat ini. Sangat berguna untuk administrasi server,
+# misalnya jika ada query yang "nyangkut" lama (stuck), kita bisa mematikan (kill)
+# query tersebut menggunakan PID ini.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: PostgreSQL Backend Process ID: 15432
+
+print("--- 3. MENDAPATKAN POSTGRES PROCESS ID (PID) ---")
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT pg_backend_pid();")
+    backend_pid = cursor.fetchone()[0]
+    print(f"Output: PostgreSQL Backend Process ID: {backend_pid}\n")
+    
+    cursor.close()
+    conn.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+
 
 # ------------------------------------------------------------------------------
 # 4. TRANSAKSI (COMMIT & ROLLBACK)
 # ------------------------------------------------------------------------------
-# Memastikan konsistensi data. Jika semua berhasil maka COMMIT, jika ada error maka ROLLBACK.
-def materi_4_transaksi():
-    print("\n--- 4. TRANSAKSI (COMMIT & ROLLBACK) ---")
-    conn = None
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # Memulai block query untuk membuat tabel (hanya contoh)
-        print("Mencoba membuat tabel dummy...")
-        cursor.execute("CREATE TABLE IF NOT EXISTS contoh_transaksi (id SERIAL PRIMARY KEY, nama VARCHAR(50));")
-        
-        print("Memasukkan data dummy...")
-        cursor.execute("INSERT INTO contoh_transaksi (nama) VALUES ('Test User');")
-        
-        # Menyimpan perubahan secara permanen (Commit)
-        conn.commit()
-        print("Transaksi berhasil di-commit!")
-        
-        # Cleanup (Optional)
-        cursor.execute("DROP TABLE contoh_transaksi;")
-        conn.commit()
-        
-        cursor.close()
-    except Exception as e:
-        # Jika terjadi error di tengah-tengah query, kita batalkan semua perubahan (Rollback)
-        if conn:
-            conn.rollback()
-        print(f"Terjadi error, transaksi dibatalkan (Rollback). Error: {e}")
-    finally:
-        if conn:
-            conn.close()
+# APA ITU:
+# Transaksi adalah fitur di mana serangkaian operasi database (seperti Insert, 
+# Update, Delete yang beruntun) dikelompokkan menjadi satu kesatuan tugas.
+# 
+# FUNGSI:
+# Menjaga konsistensi data (ACID). 
+# - COMMIT: Jika semua kode berhasil dieksekusi, barulah perubahan data disimpan
+#   secara permanen.
+# - ROLLBACK: Jika terjadi error atau kegagalan di tengah-tengah jalan, seluruh 
+#   perubahan yang sudah terjadi akan dibatalkan, jadi data tidak "setengah-setengah".
+#
+# KEMUNGKINAN OUTPUT:
+# Output (Jika Sukses) : Transaksi berhasil di-commit!
+# Output (Jika Gagal)  : Terjadi error, transaksi dibatalkan (Rollback). Error: ...
+
+print("--- 4. TRANSAKSI (COMMIT & ROLLBACK) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Simulasi membuat tabel dan memasukkan data
+    cursor.execute("CREATE TABLE IF NOT EXISTS contoh_transaksi (id SERIAL PRIMARY KEY, nama VARCHAR(50));")
+    cursor.execute("INSERT INTO contoh_transaksi (nama) VALUES ('Test User');")
+    
+    # Jika sampai sini berhasil, simpan
+    conn.commit()
+    print("Output: Transaksi berhasil di-commit!")
+    
+    # Cleanup (opsional, agar database bersih lagi)
+    cursor.execute("DROP TABLE contoh_transaksi;")
+    conn.commit()
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback() # Batalkan perubahan jika ada error!
+    print(f"Output: Terjadi error, transaksi dibatalkan (Rollback). Error: {e}")
+finally:
+    if conn:
+        conn.close()
+print() # Beri spasi bari baru
+
 
 # ------------------------------------------------------------------------------
 # 5. ERROR HANDLING SPESIFIK POSTGRESQL (PSYCOPG2)
 # ------------------------------------------------------------------------------
-# Menangani error database secara spesifik, bukan sekedar Exception umum.
-def materi_5_error_handling():
-    print("\n--- 5. ERROR HANDLING SPESIFIK POSTGRESQL ---")
-    conn = None
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # Mencoba query error dengan sengaja (tabel tidak ada)
-        print("Mengeksekusi query yang sengaja salah...")
-        cursor.execute("SELECT * FROM tabel_yang_tidak_pernah_ada;")
-        
-    except psycopg2.OperationalError as e:
-        print(f"Operational Error (Misal: server mati, koneksi terputus): {e}")
-    except psycopg2.ProgrammingError as e:
-        print(f"Programming Error (Misal: sintaks SQL salah, tabel tidak ada): {e}")
-    except psycopg2.Error as e:
-        print(f"Error umum Database PostgreSQL: {e}")
-    except Exception as e:
-        print(f"Error dari sistem Python: {e}")
-    finally:
-        if conn:
-            conn.rollback()
-            conn.close()
+# APA ITU:
+# Mekanisme menangkap jenis-jenis error yang sangat spesifik dan berkaitan 
+# langsung dengan masalah database.
+#
+# FUNGSI:
+# Membantu kita mengetahui akar masalah dengan presisi. Misalnya, apakah masalahnya 
+# karena kredensial password salah, server down (OperationalError), atau murni karena
+# penulisan sintaks SQL (query) yang salah (ProgrammingError).
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Programming Error: relation "tabel_yang_tidak_pernah_ada" does not exist
 
-# ==============================================================================
-# JALANKAN SEMUA MATERI
-# ==============================================================================
-if __name__ == "__main__":
-    print("=== BELAJAR DASAR POSTGRESQL DENGAN PYTHON ===")
-    print("Catatan: Pastikan server PostgreSQL menyala dan DB_CONFIG sudah sesuai.\n")
+print("--- 5. ERROR HANDLING SPESIFIK POSTGRESQL ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
     
-    materi_1_koneksi_dasar()
-    materi_2_connection_pooling()
-    materi_3_pg_backend_pid()
-    materi_4_transaksi()
-    materi_5_error_handling()
+    # Query ini akan SANGAT SENGAJA DIBUAT ERROR karena memanggil tabel gaib
+    cursor.execute("SELECT * FROM tabel_yang_tidak_pernah_ada;")
+    
+except psycopg2.OperationalError as e:
+    print(f"Output: Operational Error (Masalah koneksi/server): {e}")
+except psycopg2.ProgrammingError as e:
+    print(f"Output: Programming Error (Masalah query SQL salah): {e}")
+except psycopg2.Error as e:
+    print(f"Output: Error Database lainnya: {e}")
+except Exception as e:
+    print(f"Output: Error umum: {e}")
+finally:
+    if conn:
+        conn.rollback()
+        conn.close()
+print() # Beri spasi baris baru
+
+
+# ------------------------------------------------------------------------------
+# 6. CURRENT DATABASE, USER & SCHEMA
+# ------------------------------------------------------------------------------
+# APA ITU:
+# current_database(), current_user, current_schema() adalah fungsi built-in 
+# (bawaan) yang disediakan langsung oleh database PostgreSQL.
+#
+# FUNGSI:
+# Digunakan untuk mendapatkan informasi konteks (environment) dari sesi saat ini:
+# - current_database(): Kita sedang terhubung ke database yang mana?
+# - current_user: Kita login/terhubung menggunakan akun user apa?
+# - current_schema(): Kita sedang ada di lingkup schema mana? (Default biasanya 'public')
+# 
+# Sangat berguna ketika kita butuh membuat log audit, membatasi akses hak cipta 
+# tabel, atau saat aplikasi bekerja dengan banyak database/schema sekaligus secara dinamis.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output:
+# Database saat ini : postgres
+# User saat ini     : postgres
+# Schema saat ini   : public
+
+print("--- 6. CURRENT DATABASE, USER & SCHEMA ---")
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT current_database(), current_user, current_schema();")
+    current_info = cursor.fetchone()
+    
+    print("Output:")
+    print(f"Database saat ini : {current_info[0]}")
+    print(f"User saat ini     : {current_info[1]}")
+    print(f"Schema saat ini   : {current_info[2]}\n")
+    
+    cursor.close()
+    conn.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+
+
+# ------------------------------------------------------------------------------
+# 7. SCHEMA, "$user", DAN SEARCH_PATH
+# ------------------------------------------------------------------------------
+# APA ITU:
+# - SCHEMA: Seperti folder atau direktori di dalam database untuk mengelompokkan tabel.
+#   Secara default, PostgreSQL menaruh tabel di schema bernama 'public'.
+# - "$user": Adalah variabel spesial di search_path. Jika ada schema yang namanya
+#   persis sama dengan nama user (role) yang sedang login, PostgreSQL akan
+#   memprioritaskan schema tersebut (karena "$user" biasanya elemen pertama di search_path).
+# - SEARCH_PATH: Daftar urutan schema yang akan dicari oleh PostgreSQL ketika
+#   kita menjalankan query (misal: SELECT * FROM customer) tanpa menyebutkan nama 
+#   schemanya (seperti public.customer).
+#
+# FUNGSI:
+# - search_path membuat kita tidak perlu repot mengetik nama schema berulang kali.
+#   Sistem akan otomatis mengecek tabel pada schema pertama yang ada di search_path.
+# - Jika kita menjalankan `SET search_path TO myschema;`, maka setiap query tanpa
+#   menyebutkan schema akan merujuk ke tabel di dalam `myschema`.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Search Path saat ini: "$user", public
+# Output: Berhasil membuat schema contoh_schema
+# Output: Berhasil mengubah search_path menjadi contoh_schema
+# Output: Schema saat ini (setelah diubah): contoh_schema
+
+print("--- 7. SCHEMA, \"$user\", DAN SEARCH_PATH ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Melihat search_path default
+    cursor.execute("SHOW search_path;")
+    current_search_path = cursor.fetchone()[0]
+    print(f"Output: Search Path saat ini: {current_search_path}")
+    
+    # Penjelasan "$user"
+    print("Penjelasan:")
+    print("Jika user kamu adalah 'postgres', dan ada schema bernama 'postgres',")
+    print("maka query tanpa schema akan mencari ke schema 'postgres' terlebih dahulu.")
+    print("Itu karena \"$user\" di search_path merujuk ke nama user yang sedang aktif.\n")
+    
+    # Mengubah search_path
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS contoh_schema;")
+    print("Output: Berhasil membuat schema contoh_schema")
+    
+    cursor.execute("SET search_path TO contoh_schema;")
+    print("Output: Berhasil mengubah search_path menjadi contoh_schema")
+    
+    cursor.execute("SELECT current_schema();")
+    new_schema = cursor.fetchone()[0]
+    print(f"Output: Schema saat ini (setelah diubah): {new_schema}\n")
+    
+    # Cleanup (kembalikan seperti semula untuk latihan)
+    cursor.execute("SET search_path TO DEFAULT;")
+    cursor.execute("DROP SCHEMA IF EXISTS contoh_schema CASCADE;")
+    conn.commit()
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
