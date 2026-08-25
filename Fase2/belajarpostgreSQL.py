@@ -19,7 +19,7 @@ print("=== BELAJAR DASAR POSTGRESQL DENGAN PYTHON ===\n")
 # Konfigurasi Database (Sesuaikan dengan kredensial Anda)
 DB_CONFIG = {
     "dbname": "postgres",
-    "user": "postgres",
+    "user": "u0_a317",
     "password": "password",
     "host": "127.0.0.1",
     "port": "5432"
@@ -314,3 +314,83 @@ finally:
     if conn:
         conn.close()
 
+
+# ------------------------------------------------------------------------------
+# 8. ROLE & USER, OWNERSHIP, DAN PRIVILEGES
+# ------------------------------------------------------------------------------
+# APA ITU:
+# - ROLE & USER: Di PostgreSQL, Role dan User pada dasarnya adalah hal yang sama.
+#   User hanyalah Role yang diberikan atribut LOGIN sehingga bisa masuk ke database. 
+#   Role juga bisa digunakan sebagai "Group" untuk mengelompokkan role lain.
+# - SCHEMA OWNERSHIP & TABLE OWNERSHIP: Setiap objek di PostgreSQL (database, schema, 
+#   tabel, view, fungsi, dll) memiliki pemilik (Owner). Biasanya, siapa yang membuat
+#   objek, otomatis menjadi owner-nya. Owner memiliki hak mutlak atas objeknya, 
+#   termasuk hak untuk menghapus (DROP) atau memberi izin (GRANT) kepada role lain.
+# - OWNERSHIP vs PRIVILEGES: 
+#   > Ownership: Kepemilikan (hanya ada satu owner atau grup role owner). Owner 
+#     punya kontrol penuh (ALTER, DROP, GRANT).
+#   > Privileges: Hak akses parsial (misal: hanya boleh SELECT, INSERT, atau UPDATE) 
+#     yang diberikan (di-GRANT) kepada user yang BUKAN owner. User yang hanya punya
+#     privilege SELECT tidak akan bisa menghapus (DROP) tabel tersebut.
+#
+# FUNGSI:
+# - Memastikan keamanan data dengan memberikan hak akses secukupnya (Principle of
+#   Least Privilege).
+# - Melacak pemilik objek menggunakan query sistem, misalnya melalui view `pg_tables`.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Berhasil membuat role/user baru 'contoh_user'
+# Output: Schema 'contoh_schema_baru' berhasil dibuat dengan owner 'contoh_user'
+# Output: Tabel 'test_schema' dibuat dan kepemilikannya diubah ke 'contoh_user'
+# Output: Cek pg_tables -> Schema: public, Tabel: test_schema, Owner: contoh_user
+
+print("--- 8. ROLE & USER, OWNERSHIP, DAN PRIVILEGES ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Role & User
+    cursor.execute("DROP ROLE IF EXISTS contoh_user;")
+    cursor.execute("CREATE ROLE contoh_user WITH LOGIN PASSWORD 'rahasia';")
+    print("Output: Berhasil membuat role/user baru 'contoh_user'")
+    
+    # 2. Schema Ownership
+    cursor.execute("DROP SCHEMA IF EXISTS contoh_schema_baru CASCADE;")
+    cursor.execute("CREATE SCHEMA contoh_schema_baru AUTHORIZATION contoh_user;")
+    print("Output: Schema 'contoh_schema_baru' berhasil dibuat dengan owner 'contoh_user'")
+    
+    # 3. Table Ownership
+    cursor.execute("DROP TABLE IF EXISTS test_schema;")
+    cursor.execute("CREATE TABLE test_schema (id INT);")
+    
+    # Mengubah owner tabel (Table Ownership)
+    cursor.execute("ALTER TABLE test_schema OWNER TO contoh_user;")
+    print("Output: Tabel 'test_schema' dibuat dan kepemilikannya diubah ke 'contoh_user'")
+    
+    # 4. Mengecek Table Ownership menggunakan pg_tables (Sesuai Permintaan)
+    query_cek_owner = """
+        SELECT schemaname, tablename, tableowner 
+        FROM pg_tables 
+        WHERE tablename = 'test_schema';
+    """
+    cursor.execute(query_cek_owner)
+    hasil_cek = cursor.fetchone()
+    if hasil_cek:
+        print(f"Output: Cek pg_tables -> Schema: {hasil_cek[0]}, Tabel: {hasil_cek[1]}, Owner: {hasil_cek[2]}")
+    
+    # 5. Cleanup
+    cursor.execute("DROP TABLE IF EXISTS test_schema;")
+    cursor.execute("DROP SCHEMA IF EXISTS contoh_schema_baru CASCADE;")
+    cursor.execute("DROP ROLE IF EXISTS contoh_user;")
+    conn.commit()
+    print("Output: Cleanup berhasil (objek-objek latihan telah dihapus)\n")
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
