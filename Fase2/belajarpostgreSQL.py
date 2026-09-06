@@ -754,3 +754,805 @@ except Exception as e:
 finally:
     if conn:
         conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 13. TIPE DATA KARAKTER (TEXT, VARCHAR, CHAR)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# Di PostgreSQL, terdapat 3 tipe data utama untuk menyimpan string/teks:
+# 1. TEXT       : Menyimpan string dengan panjang tidak terbatas.
+# 2. VARCHAR(n) : Menyimpan string dengan panjang variabel, tetapi maksimal 'n' karakter. 
+#                 (Jika tanpa 'n', sifatnya sama persis seperti TEXT).
+# 3. CHAR(n)    : Menyimpan string dengan panjang tetap 'n' karakter. Jika teks yang
+#                 dimasukkan kurang dari 'n', PostgreSQL akan menambahkan spasi (padding)
+#                 di belakangnya hingga panjangnya pas 'n'. CHAR (tanpa 'n') berarti CHAR(1).
+#
+# KAPAN HARUS DIPAKAI & TIDAK DIPAKAI:
+# - TEXT       : SANGAT DIREKOMENDASIKAN. Gunakan untuk hampir semua kebutuhan teks. Di
+#                PostgreSQL, TEXT dan VARCHAR tidak memiliki perbedaan performa.
+# - VARCHAR(n) : Gunakan HANYA JIKA Anda benar-benar perlu membatasi panjang input pengguna 
+#                (misal maksimal 50 karakter) di level database.
+# - CHAR(n)    : SEBAIKNYA JANGAN DIPAKAI. Sangat tidak direkomendasikan karena memakan
+#                storage ekstra (karena padding spasi) dan sering menimbulkan masalah 
+#                saat pencarian/perbandingan string.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil membuat tabel tipe karakter
+# Output: Insert data sukses!
+# Output Data:
+# - TEXT: 'Bebas sepanjang apapun' (Len: 22)
+# - VARCHAR(10): 'MaksSepulh' (Len: 10)
+# - CHAR(10): 'PasSepuluh' (Len: 10)
+# - CHAR(10) dengan padding: 'Pendek    ' (Len: 10)
+
+print("--- 13. TIPE DATA KARAKTER (TEXT, VARCHAR, CHAR) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_tipe_karakter;")
+    
+    query_create = """
+    CREATE TABLE contoh_tipe_karakter (
+        kolom_text TEXT,
+        kolom_varchar VARCHAR(10),
+        kolom_char CHAR(10)
+    );
+    """
+    cursor.execute(query_create)
+    print("Output: Berhasil membuat tabel tipe karakter")
+    
+    # Insert data (perhatikan CHAR yang akan di-padding jika kurang dari 10)
+    query_insert = """
+    INSERT INTO contoh_tipe_karakter (kolom_text, kolom_varchar, kolom_char)
+    VALUES 
+    ('Bebas sepanjang apapun', 'MaksSepulh', 'PasSepuluh'),
+    ('Data text lain', 'Pendek', 'Pendek');
+    """
+    cursor.execute(query_insert)
+    print("Output: Insert data sukses!")
+    
+    # Ambil data dan lihat panjang aslinya (length)
+    cursor.execute("SELECT kolom_text, length(kolom_text), kolom_varchar, length(kolom_varchar), kolom_char, length(kolom_char) FROM contoh_tipe_karakter;")
+    rows = cursor.fetchall()
+    
+    print("Output Data:")
+    for row in rows:
+        print(f"- TEXT: '{row[0]}' (Len: {row[1]}) | VARCHAR(10): '{row[2]}' (Len: {row[3]}) | CHAR(10): '{row[4]}' (Len: {row[5]})")
+        
+    cursor.execute("DROP TABLE IF EXISTS contoh_tipe_karakter;")
+    conn.commit()
+    print("Output: Cleanup tabel berhasil.\\n")
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 14. TIPE DATA NUMERIK & TYPE CASTING (::)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memiliki beberapa tipe data angka (numerik) utama:
+# - smallint : Angka bulat kecil, memakan memori 2 byte (-32768 s/d +32767).
+# - integer  : Angka bulat standar, memakan memori 4 byte (-2 milyar s/d +2 milyar).
+# - bigint   : Angka bulat besar, memakan memori 8 byte (sangat besar).
+# - numeric  : Angka desimal presisi eksak (exact decimal). Sempurna untuk data uang 
+#              atau finansial karena tidak ada pembulatan yang aneh.
+# - real     : Angka desimal (floating point) 4 byte dengan presisi variabel/tidak eksak.
+# - double precision : Angka desimal (floating point) 8 byte. Lebih detail dari real,
+#                      biasa dipakai untuk kalkulasi saintifik, tapi bukan untuk uang.
+#
+# TYPE CASTING (::):
+# Tanda `::` adalah sintaks unik khas PostgreSQL untuk mengubah (casting) suatu tipe 
+# data menjadi tipe data lain secara langsung. Misalnya, mengubah string '123' 
+# menjadi angka integer: `'123'::integer`.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil membuat tabel numerik
+# Output: Insert data numerik sukses!
+# Output Casting 1: Tipe string '100.50' di-cast ke NUMERIC menjadi 100.50
+# Output Casting 2: Tipe integer 50 di-cast ke TEXT menjadi '50'
+
+print("--- 14. TIPE DATA NUMERIK & TYPE CASTING (::) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_numerik;")
+    
+    query_create = """
+    CREATE TABLE contoh_numerik (
+        id smallint,
+        umur integer,
+        saldo bigint,
+        harga numeric(10, 2),    -- maksimal 10 digit, 2 di belakang koma
+        berat_real real,
+        jarak_double double precision
+    );
+    """
+    cursor.execute(query_create)
+    print("Output: Berhasil membuat tabel numerik")
+    
+    # Insert data dengan contoh type casting (::) di dalam query
+    query_insert = """
+    INSERT INTO contoh_numerik (id, umur, saldo, harga, berat_real, jarak_double)
+    VALUES (
+        '1'::smallint,             -- casting dari string ke smallint
+        '25'::integer,             -- casting dari string ke integer
+        10000000000,               -- bigint tidak perlu di-cast jika muat
+        '99.99'::numeric,          -- casting dari string ke numeric
+        '65.5'::real,              -- casting ke real
+        '12345.6789'::double precision
+    );
+    """
+    cursor.execute(query_insert)
+    print("Output: Insert data numerik sukses!")
+    
+    # Contoh Type Casting dalam SELECT (mengubah bentuk saat diambil)
+    # 1. String -> Numeric
+    # 2. Integer -> Text
+    cursor.execute("SELECT '100.50'::numeric, 50::text;")
+    row_cast = cursor.fetchone()
+    print(f"Output Casting 1: String '100.50' ke NUMERIC -> {row_cast[0]} (Tipe Python: {type(row_cast[0])})")
+    print(f"Output Casting 2: Integer 50 ke TEXT -> '{row_cast[1]}' (Tipe Python: {type(row_cast[1])})")
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_numerik;")
+    conn.commit()
+    print("Output: Cleanup tabel numerik berhasil.\\n")
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 15. TIPE DATA WAKTU (DATE, TIMESTAMP, TIMESTAMPTZ)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memiliki tipe data khusus untuk menangani tanggal dan waktu:
+# - DATE        : Hanya menyimpan tanggal (Tahun, Bulan, Tanggal). Tidak ada jam/waktu.
+#                 Contoh format: 'YYYY-MM-DD' ('2026-09-01').
+# - TIMESTAMP   : Menyimpan tanggal dan waktu, TAPI TANPA zona waktu (timezone).
+#                 Sering juga disebut `timestamp without time zone`.
+#                 Menyimpan secara harfiah apa yang dimasukkan (misal: jam 10 pagi,
+#                 tanpa peduli di negara mana).
+# - TIMESTAMPTZ : Menyimpan tanggal dan waktu DENGAN zona waktu (timezone).
+#                 Sering juga disebut `timestamp with time zone`.
+#                 Ini adalah format PALING DIREKOMENDASIKAN di PostgreSQL. Data 
+#                 selalu dikonversi ke UTC di dalam database, namun saat di-SELECT,
+#                 PostgreSQL akan menampilkannya sesuai dengan zona waktu lokal aplikasi/client.
+#
+# FUNGSI & KAPAN DIPAKAI:
+# - DATE        : Gunakan untuk data yang murni hanya butuh tanggal tanpa peduli jam,
+#                 seperti Tanggal Lahir (DOB) atau Tanggal Gajian.
+# - TIMESTAMP   : Gunakan HANYA jika Anda ingin waktu absolut yang sama di seluruh dunia 
+#                 (contoh: jam dinding dalam sebuah acara/log fiktif yang tidak butuh konversi
+#                 zona waktu antar negara).
+# - TIMESTAMPTZ : Gunakan SELALU untuk mencatat kapan sebuah data dibuat (created_at) 
+#                 atau diubah (updated_at). Mencegah kebingungan zona waktu jika aplikasi
+#                 Anda diakses oleh pengguna dari negara/zona waktu yang berbeda.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil membuat tabel tanggal dan waktu
+# Output: Insert data waktu sukses!
+# Output Data:
+# - DATE       : 1995-08-17 (Tipe: <class 'datetime.date'>)
+# - TIMESTAMP  : 2026-09-01 10:00:00 (Tipe: <class 'datetime.datetime'>)
+# - TIMESTAMPTZ: 2026-09-01 11:17:17+00:00 (Tipe: <class 'datetime.datetime'>)
+
+print("--- 15. TIPE DATA WAKTU (DATE, TIMESTAMP, TIMESTAMPTZ) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_waktu;")
+    
+    query_create = """
+    CREATE TABLE contoh_waktu (
+        id SERIAL PRIMARY KEY,
+        tanggal_lahir DATE,
+        waktu_login TIMESTAMP,
+        waktu_transaksi TIMESTAMPTZ
+    );
+    """
+    cursor.execute(query_create)
+    print("Output: Berhasil membuat tabel tanggal dan waktu")
+    
+    # Insert data menggunakan fungsi built-in PostgreSQL (CURRENT_DATE, NOW())
+    # NOW() otomatis menyimpan waktu lengkap. PostgreSQL menyesuaikan ke TIMESTAMP/TIMESTAMPTZ.
+    query_insert = """
+    INSERT INTO contoh_waktu (tanggal_lahir, waktu_login, waktu_transaksi)
+    VALUES (
+        '1995-08-17',                 -- Input literal untuk DATE
+        '2026-09-01 10:00:00',        -- Input literal TIMESTAMP tanpa zona waktu
+        NOW()                         -- Fungsi waktu saat ini
+    );
+    """
+    cursor.execute(query_insert)
+    print("Output: Insert data waktu sukses!")
+    
+    # Ambil data
+    cursor.execute("SELECT tanggal_lahir, waktu_login, waktu_transaksi FROM contoh_waktu;")
+    row = cursor.fetchone()
+    
+    if row:
+        print("Output Data:")
+        print(f"- DATE       : {row[0]} (Tipe: {type(row[0])})")
+        print(f"- TIMESTAMP  : {row[1]} (Tipe: {type(row[1])})")
+        print(f"- TIMESTAMPTZ: {row[2]} (Tipe: {type(row[2])})")
+        
+    cursor.execute("DROP TABLE IF EXISTS contoh_waktu;")
+    conn.commit()
+    print("Output: Cleanup tabel waktu berhasil.\n")
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 16. BOOLEAN, NULL, DAN THREE-VALUED LOGIC
+# ------------------------------------------------------------------------------
+# APA ITU:
+# - BOOLEAN : Tipe data yang hanya memiliki 3 kemungkinan nilai (Three-Valued Logic):
+#             TRUE (Benar), FALSE (Salah), dan NULL (Tidak Diketahui/Kosong).
+# - NULL    : Merepresentasikan nilai yang hilang, tidak diketahui, atau tidak ada.
+#             NULL BUKANLAH angka nol (0), dan BUKAN string kosong ('').
+# - THREE-VALUED LOGIC: Logika unik di mana operasi perbandingan atau logika yang
+#             melibatkan NULL seringkali menghasilkan NULL (Unknown).
+#
+# OPERASI KOMBINASI AND & OR DENGAN NULL:
+# - AND:
+#   > TRUE AND NULL  menghasilkan NULL
+#   > FALSE AND NULL menghasilkan FALSE
+# - OR:
+#   > TRUE OR NULL   menghasilkan TRUE
+#   > FALSE OR NULL  menghasilkan NULL
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Evaluasi AND dan OR dengan NULL selesai.
+# Output: TRUE AND NULL  -> None (NULL)
+# Output: FALSE AND NULL -> False
+# Output: TRUE OR NULL   -> True
+# Output: FALSE OR NULL  -> None (NULL)
+
+print("--- 16. BOOLEAN, NULL, DAN THREE-VALUED LOGIC ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Evaluasi logika AND
+    cursor.execute("SELECT true AND NULL, false AND NULL;")
+    hasil_and = cursor.fetchone()
+    
+    # Evaluasi logika OR
+    cursor.execute("SELECT true OR NULL, false OR NULL;")
+    hasil_or = cursor.fetchone()
+    
+    print("Output:")
+    print(f"- TRUE AND NULL  -> {hasil_and[0]}")
+    print(f"- FALSE AND NULL -> {hasil_and[1]}")
+    print(f"- TRUE OR NULL   -> {hasil_or[0]}")
+    print(f"- FALSE OR NULL  -> {hasil_or[1]}\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 17. COALESCE
+# ------------------------------------------------------------------------------
+# APA ITU:
+# COALESCE adalah fungsi yang menerima daftar nilai (argumen) dan mengembalikan
+# nilai PERTAMA yang BUKAN NULL.
+#
+# FUNGSI:
+# Sangat berguna untuk memberikan "nilai default" jika data asli bernilai NULL.
+# Misalnya, jika kolom "diskon" NULL, kita bisa menggunakan COALESCE(diskon, 0)
+# agar perhitungan matematika tidak menjadi NULL.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: COALESCE(NULL, NULL, 100, 200) -> 100
+# Output: Diskon Produk A: 0 (Data asli NULL diganti 0)
+
+print("--- 17. COALESCE ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COALESCE(NULL, NULL, 100, 200);")
+    hasil_coalesce = cursor.fetchone()[0]
+    print(f"Output: COALESCE(NULL, NULL, 100, 200) -> {hasil_coalesce}")
+    
+    # Simulasi penggunaan COALESCE pada data
+    cursor.execute("SELECT COALESCE(NULL, 0);") # Simulasi kolom diskon yang NULL
+    diskon = cursor.fetchone()[0]
+    print(f"Output: Diskon Produk A: {diskon} (Data asli NULL diganti 0)\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 18. CASE (SEARCHED CASE DAN SIMPLE CASE)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# CASE adalah struktur kondisional (mirip IF-ELSE dalam pemrograman) yang dapat
+# digunakan langsung di dalam query SQL. Terdapat dua jenis:
+#
+# 1. SIMPLE CASE:
+#    Membandingkan satu ekspresi/kolom dengan beberapa nilai pasti secara langsung.
+#    Cocok untuk perbandingan persamaan (equality).
+#    Sintaks: CASE ekspresi WHEN nilai1 THEN hasil1 WHEN nilai2 THEN hasil2 ELSE hasil_default END
+#
+# 2. SEARCHED CASE:
+#    Mengevaluasi setiap kondisi boolean (bisa pakai >, <, AND, OR, dsb).
+#    Lebih fleksibel dari Simple CASE.
+#    Sintaks: CASE WHEN kondisi1 THEN hasil1 WHEN kondisi2 THEN hasil2 ELSE hasil_default END
+#
+# KEMUNGKINAN OUTPUT:
+# Output Simple CASE (Status 2) -> 'Selesai'
+# Output Searched CASE (Nilai 85) -> 'Lulus dengan Baik'
+
+print("--- 18. CASE (SEARCHED CASE DAN SIMPLE CASE) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. SIMPLE CASE
+    # Misalkan status: 1 (Baru), 2 (Selesai), 3 (Batal)
+    query_simple_case = """
+        SELECT 
+            CASE 2
+                WHEN 1 THEN 'Baru'
+                WHEN 2 THEN 'Selesai'
+                WHEN 3 THEN 'Batal'
+                ELSE 'Tidak Diketahui'
+            END;
+    """
+    cursor.execute(query_simple_case)
+    hasil_simple = cursor.fetchone()[0]
+    print(f"Output Simple CASE (Status 2) -> '{hasil_simple}'")
+    
+    # 2. SEARCHED CASE
+    # Misalkan nilai siswa: 85
+    query_searched_case = """
+        SELECT 
+            CASE 
+                WHEN 85 >= 90 THEN 'Sempurna'
+                WHEN 85 >= 80 THEN 'Lulus dengan Baik'
+                WHEN 85 >= 60 THEN 'Lulus'
+                ELSE 'Gagal'
+            END;
+    """
+    cursor.execute(query_searched_case)
+    hasil_searched = cursor.fetchone()[0]
+    print(f"Output Searched CASE (Nilai 85) -> '{hasil_searched}'\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 19. STRING FUNCTIONS (||, CONCAT, CONCAT_WS)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# Fungsi dan operator string digunakan untuk menggabungkan dua atau lebih
+# string menjadi satu kesatuan string.
+#
+# 1. Operator `||` (Piping / Concatenation Operator):
+#    Menggabungkan string. Aturannya: Jika salah satu nilai yang digabung bernilai NULL,
+#    maka hasil keseluruhan akan menjadi NULL.
+#    Contoh: 'Halo ' || 'Dunia' -> 'Halo Dunia'
+#            'Halo ' || NULL -> NULL
+#
+# 2. Fungsi CONCAT():
+#    Menggabungkan argumen. Aturannya: Mengabaikan nilai NULL. Jika ada NULL,
+#    NULL tersebut dianggap sebagai string kosong ('').
+#    Contoh: CONCAT('Halo ', NULL, 'Dunia') -> 'Halo Dunia'
+#
+# 3. Fungsi CONCAT_WS() (Concatenate With Separator):
+#    Menggabungkan string dengan pemisah (separator) di awal argumen.
+#    Aturannya: Mengabaikan nilai NULL (tidak menambahkan separator ekstra untuk NULL).
+#    Sintaks: CONCAT_WS(separator, string1, string2, ...)
+#    Contoh: CONCAT_WS(', ', 'Apel', NULL, 'Jeruk') -> 'Apel, Jeruk'
+#
+# KEMUNGKINAN OUTPUT:
+# Output Operator || (dengan NULL) -> None (NULL di Python)
+# Output CONCAT (dengan NULL) -> 'Data PostgreSQL'
+# Output CONCAT_WS -> 'Budi, 25, Jakarta'
+
+print("--- 19. STRING FUNCTIONS (||, CONCAT, CONCAT_WS) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Operator ||
+    cursor.execute("SELECT 'Belajar ' || NULL || 'PostgreSQL';")
+    hasil_piping = cursor.fetchone()[0]
+    print(f"Output Operator || (dengan NULL) -> {hasil_piping}")
+    
+    # 2. CONCAT
+    cursor.execute("SELECT CONCAT('Data ', NULL, 'PostgreSQL');")
+    hasil_concat = cursor.fetchone()[0]
+    print(f"Output CONCAT (dengan NULL) -> '{hasil_concat}'")
+    
+    # 3. CONCAT_WS
+    cursor.execute("SELECT CONCAT_WS(', ', 'Budi', NULL, '25', 'Jakarta');")
+    hasil_concat_ws = cursor.fetchone()[0]
+    print(f"Output CONCAT_WS -> '{hasil_concat_ws}'\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 20. TIMESTAMPTZ DENGAN UTC DAN JENIS-JENISNYA
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memiliki beberapa tipe data untuk menangani waktu dan tanggal.
+#
+# JENIS-JENIS TIPE DATA WAKTU:
+# 1. DATE: Hanya menyimpan tanggal (Tahun-Bulan-Hari). Contoh: '2023-10-25'
+# 2. TIME: Hanya menyimpan waktu (Jam:Menit:Detik). Contoh: '14:30:00'
+# 3. TIMESTAMP: Menyimpan tanggal dan waktu TANPA zona waktu (Timestamp without time zone).
+# 4. TIMESTAMPTZ: Menyimpan tanggal dan waktu DENGAN zona waktu (Timestamp with time zone).
+#
+# ATURAN TIMESTAMPTZ DAN UTC:
+# - Saat kita memasukkan data TIMESTAMPTZ, PostgreSQL akan mengkonversinya
+#   ke zona waktu UTC (Universal Time Coordinated) secara internal sebelum menyimpannya.
+# - Saat kita melakukan query (SELECT) data tersebut, PostgreSQL akan mengubahnya 
+#   kembali dari UTC ke zona waktu (timezone) yang sedang aktif di session/server saat itu.
+# - Sangat disarankan (best practice) menyimpan waktu dalam format UTC dan tipe TIMESTAMPTZ
+#   untuk menghindari kebingungan zona waktu dalam aplikasi global.
+#
+# KEMUNGKINAN OUTPUT:
+# Output CURRENT_TIMESTAMP (Timestamptz) -> (Tergantung waktu server)
+# Output TIMEZONE UTC -> (Waktu dalam UTC)
+
+print("--- 20. TIMESTAMPTZ DENGAN UTC DAN JENIS-JENISNYA ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Melihat waktu saat ini (biasanya tipe TIMESTAMPTZ)
+    cursor.execute("SELECT CURRENT_TIMESTAMP;")
+    hasil_now = cursor.fetchone()[0]
+    print(f"Output CURRENT_TIMESTAMP (Timestamptz) -> {hasil_now}")
+    
+    # Konversi waktu saat ini ke UTC secara eksplisit
+    cursor.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC';")
+    hasil_utc = cursor.fetchone()[0]
+    print(f"Output waktu di zona UTC -> {hasil_utc}\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+# ------------------------------------------------------------------------------
+# 21. OPERASI INTERVAL, DATE, DAN TIMESTAMP
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memungkinkan kita melakukan operasi matematika pada tipe data waktu
+# menggunakan tipe INTERVAL, serta menambahkan/mengurangi DATE dan TIMESTAMP.
+#
+# ATURAN OPERASI:
+# 1. DATE + INTERVAL       -> TIMESTAMP (Menambahkan rentang waktu ke tanggal menghasilkan timestamp)
+# 2. DATE - DATE           -> INTEGER (Mengurangi dua tanggal menghasilkan selisih jumlah hari)
+# 3. TIMESTAMP + INTERVAL  -> TIMESTAMP (Menambahkan rentang waktu ke timestamp menghasilkan timestamp baru)
+# 4. TIMESTAMP - TIMESTAMP -> INTERVAL (Mengurangi dua timestamp menghasilkan rentang waktu/interval)
+#
+# FUNGSI TAMBAHAN:
+# - CURRENT_TIMESTAMP      : Mengembalikan tanggal dan waktu saat ini (dengan zona waktu / timestamptz)
+
+print("--- 21. OPERASI INTERVAL, DATE, DAN TIMESTAMP ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Contoh DATE + INTERVAL -> TIMESTAMP
+    cursor.execute("SELECT DATE '2023-01-01' + INTERVAL '5 days';")
+    hasil_date_int = cursor.fetchone()[0]
+    print(f"DATE + INTERVAL '5 days' -> {hasil_date_int} (Tipe: {type(hasil_date_int)})")
+
+    # 2. Contoh DATE - DATE -> INTEGER (Jumlah hari)
+    cursor.execute("SELECT DATE '2023-01-10' - DATE '2023-01-01';")
+    hasil_date_date = cursor.fetchone()[0]
+    print(f"DATE - DATE ('2023-01-10' - '2023-01-01') -> {hasil_date_date} hari (Tipe: {type(hasil_date_date)})")
+
+    # 3. Contoh TIMESTAMP + INTERVAL -> TIMESTAMP
+    cursor.execute("SELECT TIMESTAMP '2023-01-01 10:00:00' + INTERVAL '2 hours';")
+    hasil_ts_int = cursor.fetchone()[0]
+    print(f"TIMESTAMP + INTERVAL '2 hours' -> {hasil_ts_int} (Tipe: {type(hasil_ts_int)})")
+
+    # 4. Contoh TIMESTAMP - TIMESTAMP -> INTERVAL
+    cursor.execute("SELECT TIMESTAMP '2023-01-01 12:00:00' - TIMESTAMP '2023-01-01 10:00:00';")
+    hasil_ts_ts = cursor.fetchone()[0]
+    print(f"TIMESTAMP - TIMESTAMP -> {hasil_ts_ts} (Tipe: {type(hasil_ts_ts)})")
+    
+    # 5. Contoh CURRENT_TIMESTAMP
+    cursor.execute("SELECT CURRENT_TIMESTAMP;")
+    hasil_curr_ts = cursor.fetchone()[0]
+    print(f"CURRENT_TIMESTAMP -> {hasil_curr_ts} (Tipe: {type(hasil_curr_ts)})\n")
+    
+    cursor.close()
+except Exception as e:
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 22. UUID DAN RANDOM CHARACTERS
+# ------------------------------------------------------------------------------
+# APA ITU:
+# UUID (Universally Unique Identifier) adalah tipe data 128-bit (berupa string hex 
+# sepanjang 32 karakter yang dipisah tanda hubung) yang sangat ideal digunakan 
+# sebagai Primary Key agar unik secara global di seluruh sistem/database.
+#
+# CARA MENDAPATKAN KARAKTER ACAK / UUID:
+# - PostgreSQL versi 13+ memiliki fungsi bawaan `gen_random_uuid()` untuk menghasilkan
+#   UUID versi 4 secara otomatis (random).
+# - Pada versi lebih lama, kita bisa menggunakan extension `uuid-ossp` dengan
+#   menjalankan query: CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; dan menggunakan
+#   fungsi `uuid_generate_v4()`.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil membuat tabel dengan UUID
+# Output UUID Acak yang dihasilkan: 32 karakter acak (contoh: 550e8400-e29b-41d4-a716-446655440000)
+
+print("--- 22. UUID DAN RANDOM CHARACTERS ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Menghasilkan UUID secara langsung menggunakan gen_random_uuid()
+    cursor.execute("SELECT gen_random_uuid();")
+    random_uuid = cursor.fetchone()[0]
+    print(f"Output UUID Acak langsung dari DB: {random_uuid} (Tipe: {type(random_uuid)})")
+    
+    # 2. Contoh implementasi UUID pada tabel
+    cursor.execute("DROP TABLE IF EXISTS contoh_uuid;")
+    query_create = """
+    CREATE TABLE contoh_uuid (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nama VARCHAR(50)
+    );
+    """
+    cursor.execute(query_create)
+    
+    cursor.execute("INSERT INTO contoh_uuid (nama) VALUES ('Pengguna Pertama') RETURNING id;")
+    inserted_id = cursor.fetchone()[0]
+    print(f"Output: Berhasil insert data dengan UUID ID: {inserted_id}\\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_uuid;")
+    conn.commit()
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 23. ARRAY, AKSES ELEMENT, DAN CARDINALITY
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memungkinkan sebuah kolom tabel untuk menyimpan sekumpulan nilai 
+# berupa Array (daftar list). Array bisa memiliki tipe data apa saja (misal: INT[], TEXT[]).
+#
+# ATURAN & FUNGSI ARRAY DI POSTGRESQL:
+# - Indexing di PostgreSQL dimulai dari angka 1 (bukan 0 seperti pada Python).
+# - Mengakses elemen: menggunakan kurung siku, contoh `hobi[1]`.
+# - cardinality(array): Fungsi untuk mendapatkan jumlah elemen di dalam array (panjang array).
+# - array_append(array, elemen): Menambahkan elemen baru ke akhir array.
+# - Operator `ANY` / `ALL`: Digunakan dalam klausa WHERE untuk memfilter array.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil insert data array!
+# Output Array Asli: ['Membaca', 'Berenang', 'Coding']
+# Output Akses Index ke-2: Berenang
+# Output Cardinality (Jumlah Hobi): 3
+
+print("--- 23. ARRAY, AKSES ELEMENT, DAN CARDINALITY ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_array;")
+    query_create = """
+    CREATE TABLE contoh_array (
+        id SERIAL PRIMARY KEY,
+        nama VARCHAR(50),
+        hobi TEXT[]
+    );
+    """
+    cursor.execute(query_create)
+    
+    # Insert data array. Di Python kita bisa melempar list secara langsung ke driver psycopg2
+    hobi_list = ['Membaca', 'Berenang', 'Coding']
+    cursor.execute("INSERT INTO contoh_array (nama, hobi) VALUES (%s, %s);", ('Budi', hobi_list))
+    print("Output: Berhasil insert data array!")
+    
+    # 1. Mengambil seluruh Array
+    cursor.execute("SELECT hobi FROM contoh_array WHERE nama = 'Budi';")
+    hasil_array = cursor.fetchone()[0]
+    print(f"Output Array Asli dari DB: {hasil_array} (Tipe Python: {type(hasil_array)})")
+    
+    # 2. Mengakses Elemen Array (Ingat: Index dimulai dari 1) dan Cardinality
+    # array_length(hobi, 1) juga bisa digunakan, tapi cardinality() lebih disarankan
+    query_akses = "SELECT hobi[2], cardinality(hobi) FROM contoh_array WHERE nama = 'Budi';"
+    cursor.execute(query_akses)
+    hasil_akses = cursor.fetchone()
+    print(f"Output Akses Index ke-2: {hasil_akses[0]}")
+    print(f"Output Cardinality (Jumlah Hobi): {hasil_akses[1]}")
+    
+    # 3. Penggunaan fungsi ANY (Pencarian di dalam Array)
+    cursor.execute("SELECT nama FROM contoh_array WHERE 'Coding' = ANY(hobi);")
+    hasil_any = cursor.fetchone()
+    if hasil_any:
+        print(f"Output Pencarian (ANY): Ditemukan user bernama {hasil_any[0]} yang memiliki hobi Coding\\n")
+        
+    cursor.execute("DROP TABLE IF EXISTS contoh_array;")
+    conn.commit()
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 24. JSON DAN JSONB
+# ------------------------------------------------------------------------------
+# APA ITU:
+# PostgreSQL memiliki dukungan native untuk tipe data JSON.
+# - JSON : Disimpan sebagai teks persis seperti yang diinputkan (termasuk spasi, urutan key).
+#          Pengecekan validitas struktur JSON dilakukan saat insert, tapi proses baca (parsing)
+#          dilakukan ulang saat query dijalankan.
+# - JSONB: (JSON Binary). Disimpan dalam format binary yang sudah ter-parsing. Spasi
+#          akan dihilangkan, urutan key tidak dijamin sama. SANGAT JAUH LEBIH CEPAT
+#          dibanding JSON biasa saat melakukan pencarian (query) dan MENDUKUNG INDEXING 
+#          (seperti GIN index). Sangat disarankan selalu pakai JSONB daripada JSON.
+#
+# CARA AKSES/MENGAMBIL DATA:
+# - `->`  : Mengambil nilai JSON sebagai tipe JSON (mengembalikan dengan tanda kutip jika string).
+# - `->>` : Mengambil nilai JSON sebagai tipe TEXT (mengembalikan tanpa tanda kutip).
+# - `#>`  : Mengambil JSON object pada path tertentu.
+# - `#>>` : Mengambil JSON text pada path tertentu.
+#
+# KEMUNGKINAN OUTPUT:
+# Output: Berhasil membuat dan insert data ke tabel JSONB
+# Output: Nama dari JSONB (sebagai TEXT): 'Siti'
+# Output: Umur dari JSONB: 25
+# Output: Kota (Nested JSON): 'Jakarta'
+
+print("--- 24. JSON DAN JSONB ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_jsonb;")
+    query_create = """
+    CREATE TABLE contoh_jsonb (
+        id SERIAL PRIMARY KEY,
+        profil JSONB
+    );
+    """
+    cursor.execute(query_create)
+    
+    # Data JSON/Dictionary dari Python yang akan dimasukkan ke database
+    # psycopg2 otomatis mem-parsing Dictionary Python menjadi string JSON untuk PostgreSQL
+    import json
+    data_profil = {
+        "nama": "Siti",
+        "umur": 25,
+        "alamat": {
+            "kota": "Jakarta",
+            "kodepos": "12345"
+        },
+        "skills": ["Python", "SQL"]
+    }
+    
+    # Karena kita menggunakan Dictionary, psycopg2 akan memasukkannya dengan baik jika
+    # kita melakukan dump string
+    cursor.execute("INSERT INTO contoh_jsonb (profil) VALUES (%s);", (json.dumps(data_profil),))
+    print("Output: Berhasil membuat dan insert data ke tabel JSONB")
+    
+    # 1. Mengambil field tunggal dari JSONB
+    # Menggunakan -> (kembalian jsonb), dan ->> (kembalian text)
+    query_ambil = """
+        SELECT 
+            profil->>'nama' AS nama_text, 
+            profil->'nama' AS nama_json,
+            profil->>'umur' AS umur_text
+        FROM contoh_jsonb;
+    """
+    cursor.execute(query_ambil)
+    hasil_jsonb = cursor.fetchone()
+    print(f"Output ->> (Tipe Teks) : {hasil_jsonb[0]}")
+    print(f"Output ->  (Tipe JSONb): {hasil_jsonb[1]}")
+    print(f"Output Umur (Teks)     : {hasil_jsonb[2]}")
+    
+    # 2. Mengambil Nested JSON (Data Bersarang) menggunakan tipe path #>>
+    # Meminta elemen: alamat -> kota
+    query_nested = "SELECT profil#>>'{alamat,kota}' FROM contoh_jsonb;"
+    cursor.execute(query_nested)
+    hasil_nested = cursor.fetchone()[0]
+    print(f"Output Kota (Nested JSON dengan #>>): {hasil_nested}")
+    
+    # 3. Filtering/Pencarian menggunakan JSONB operator `@>` (Contains)
+    # Mencari baris yang JSON profilnya mengandung key "umur": 25
+    query_cari = "SELECT profil->>'nama' FROM contoh_jsonb WHERE profil @> '{\"umur\": 25}'::jsonb;"
+    cursor.execute(query_cari)
+    hasil_cari = cursor.fetchone()[0]
+    print(f"Output Filtering (Contains @>): User dengan umur 25 adalah {hasil_cari}\\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_jsonb;")
+    conn.commit()
+    
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\\n")
+finally:
+    if conn:
+        conn.close()
