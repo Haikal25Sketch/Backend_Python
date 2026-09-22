@@ -1288,6 +1288,9 @@ finally:
 #
 # FUNGSI TAMBAHAN:
 # - CURRENT_TIMESTAMP      : Mengembalikan tanggal dan waktu saat ini (dengan zona waktu / timestamptz)
+# - AGE(timestamp1, timestamp2) : Menghitung selisih umur/durasi antara dua waktu (atau dari sekarang), hasilnya INTERVAL.
+# - DATE_TRUNC('unit', timestamp) : Memotong timestamp ke unit tertentu (contoh: 'month' membulatkan ke tanggal 1 di bulan itu).
+# - EXTRACT(unit FROM timestamp) : Mengekstrak nilai spesifik dari waktu (contoh: mengambil angka tahun atau bulan saja).
 
 print("--- 21. OPERASI INTERVAL, DATE, DAN TIMESTAMP ---")
 conn = None
@@ -1318,7 +1321,22 @@ try:
     # 5. Contoh CURRENT_TIMESTAMP
     cursor.execute("SELECT CURRENT_TIMESTAMP;")
     hasil_curr_ts = cursor.fetchone()[0]
-    print(f"CURRENT_TIMESTAMP -> {hasil_curr_ts} (Tipe: {type(hasil_curr_ts)})\n")
+    print(f"CURRENT_TIMESTAMP -> {hasil_curr_ts} (Tipe: {type(hasil_curr_ts)})")
+    
+    # 6. Contoh Fungsi AGE() -> INTERVAL
+    cursor.execute("SELECT AGE(TIMESTAMP '2025-05-15', TIMESTAMP '2023-01-01');")
+    hasil_age = cursor.fetchone()[0]
+    print(f"AGE('2025-05-15', '2023-01-01') -> {hasil_age} (Tipe: {type(hasil_age)})")
+
+    # 7. Contoh Fungsi DATE_TRUNC() -> TIMESTAMP
+    cursor.execute("SELECT DATE_TRUNC('month', TIMESTAMP '2023-10-25 14:30:00');")
+    hasil_date_trunc = cursor.fetchone()[0]
+    print(f"DATE_TRUNC('month', '2023-10-25 14:30:00') -> {hasil_date_trunc} (Tipe: {type(hasil_date_trunc)})")
+
+    # 8. Contoh Fungsi EXTRACT() -> NUMERIC / FLOAT
+    cursor.execute("SELECT EXTRACT(year FROM TIMESTAMP '2023-10-25 14:30:00');")
+    hasil_extract = cursor.fetchone()[0]
+    print(f"EXTRACT(year FROM '2023-10-25 14:30:00') -> {hasil_extract} (Tipe: {type(hasil_extract)})\n")
     
     cursor.close()
 except Exception as e:
@@ -1547,12 +1565,647 @@ try:
     
     cursor.execute("DROP TABLE IF EXISTS contoh_jsonb;")
     conn.commit()
+    print(f"Output Filtering (Contains @>): User dengan umur 25 adalah {hasil_cari}\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS contoh_jsonb;")
+    conn.commit()
     
     cursor.close()
 except Exception as e:
     if conn:
         conn.rollback()
-    print(f"Output Error: {e}\\n")
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 25. OPERATOR @> (CONTAINS) PADA JSONB & ARRAY
+# ------------------------------------------------------------------------------
+# APA ITU:
+# Operator `@>` dibaca sebagai "Contains" (mengandung). Digunakan untuk memeriksa 
+# apakah kumpulan nilai pada sisi kiri mengandung kumpulan nilai pada sisi kanan.
+# 
+# FUNGSI:
+# Sangat kuat dan cepat bila digunakan untuk melakukan pencarian di dalam tipe data
+# array atau struktur JSONB tanpa harus mengurai nilainya secara manual.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Data array mengandung [2, 3] -> (1, [1, 2, 3])
+# Output: JSONB mengandung key 'tag' dengan nilai 'python' -> (1, '{"tag": ["python", "sql"]}')
+
+print("--- 25. OPERATOR @> (CONTAINS) PADA JSONB & ARRAY ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Contoh pada ARRAY
+    cursor.execute("DROP TABLE IF EXISTS uji_contains_array;")
+    cursor.execute("CREATE TABLE uji_contains_array (id INT, angka INT[]);")
+    cursor.execute("INSERT INTO uji_contains_array VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5, 6]);")
+    
+    # Mencari yang mengandung 2 dan 3
+    cursor.execute("SELECT * FROM uji_contains_array WHERE angka @> ARRAY[2, 3];")
+    print(f"Output Array @> (Mencari 2 dan 3): {cursor.fetchall()}")
+    
+    # 2. Contoh pada JSONB
+    cursor.execute("DROP TABLE IF EXISTS uji_contains_jsonb;")
+    cursor.execute("CREATE TABLE uji_contains_jsonb (id INT, data JSONB);")
+    cursor.execute("INSERT INTO uji_contains_jsonb VALUES (1, '{\"tag\": [\"python\", \"sql\"]}'), (2, '{\"tag\": [\"java\"]}');")
+    
+    # Mencari yang JSONB-nya mengandung tag python
+    cursor.execute("SELECT * FROM uji_contains_jsonb WHERE data @> '{\"tag\": [\"python\"]}';")
+    print(f"Output JSONB @> (Mencari tag python): {cursor.fetchall()}\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS uji_contains_array;")
+    cursor.execute("DROP TABLE IF EXISTS uji_contains_jsonb;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 26. JSONB + GIN INDEX
+# ------------------------------------------------------------------------------
+# APA ITU:
+# GIN (Generalized Inverted Index) adalah jenis indeks di PostgreSQL yang khusus 
+# dirancang untuk menangani tipe data gabungan/komposit yang kompleks seperti 
+# JSONB, Array, atau teks Full Text Search.
+# 
+# FUNGSI:
+# Digunakan secara kombinasi dengan JSONB untuk membuat proses pencarian key/value 
+# atau pencarian isi elemen JSON menjadi sangat cepat walau datanya sangat besar.
+# Tanpa GIN Index, pencarian elemen di dalam JSONB yang besar akan lambat.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Berhasil membuat tabel dengan data JSONB
+# Output: Berhasil menambahkan GIN index
+# Output: Pencarian sukses! Data: (1, '{"role": "admin", "user": "alice"}')
+
+print("--- 26. JSONB + GIN INDEX ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS jsonb_gin_test;")
+    cursor.execute("CREATE TABLE jsonb_gin_test (id INT, dokumen JSONB);")
+    
+    # Insert data
+    cursor.execute("INSERT INTO jsonb_gin_test VALUES (1, '{\"user\": \"alice\", \"role\": \"admin\"}'), (2, '{\"user\": \"bob\", \"role\": \"staff\"}');")
+    print("Output: Berhasil membuat tabel dan insert data JSONB")
+    
+    # Membuat GIN Index
+    cursor.execute("CREATE INDEX idx_gin_dokumen ON jsonb_gin_test USING GIN (dokumen);")
+    print("Output: Berhasil menambahkan GIN index pada kolom 'dokumen'")
+    
+    # Pencarian cepat
+    cursor.execute("SELECT * FROM jsonb_gin_test WHERE dokumen @> '{\"role\": \"admin\"}';")
+    print(f"Output Pencarian via GIN Index (Cari admin): {cursor.fetchall()}\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS jsonb_gin_test;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 27. TIPE DATA ENUM & META-COMMAND \dT
+# ------------------------------------------------------------------------------
+# APA ITU:
+# - ENUM (Enumerated Type) adalah tipe data kustom di PostgreSQL di mana kita 
+#   mendefinisikan batasan nilai-nilai statis apa saja yang boleh disimpan 
+#   (contoh: 'L', 'P' atau 'PENDING', 'SUKSES', 'GAGAL').
+# - \dT adalah perintah di psql (Meta-Command) untuk menampilkan/melihat daftar 
+#   tipe data (data types) kustom buatan user, seperti tipe ENUM.
+#
+# FUNGSI:
+# - ENUM sangat berguna untuk menjamin integritas dan efisiensi data karena data
+#   hanya bisa disi dengan nilai yang sudah didefinisikan sebelumnya, mencegah typo.
+# - \dT adalah cara instan untuk mengecek tipe data buatan kita ada atau tidak 
+#   di terminal.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Berhasil membuat tipe ENUM dan tabel
+# Output: Insert data valid sukses! [(1, 'PENDING')]
+# Output: Gagal insert karena nilai 'PROSES' bukan bagian dari ENUM!
+
+print("--- 27. TIPE DATA ENUM & META-COMMAND \\dT ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Bersihkan tipe/tabel sebelumnya (agar tidak menumpuk)
+    cursor.execute("DROP TABLE IF EXISTS transaksi;")
+    cursor.execute("DROP TYPE IF EXISTS status_pesanan CASCADE;")
+    
+    # 1. CREATE TYPE ENUM
+    cursor.execute("CREATE TYPE status_pesanan AS ENUM ('PENDING', 'SUKSES', 'GAGAL');")
+    print("Output: Berhasil membuat tipe ENUM 'status_pesanan'")
+    
+    cursor.execute("CREATE TABLE transaksi (id INT, status status_pesanan);")
+    cursor.execute("INSERT INTO transaksi VALUES (1, 'PENDING');")
+    print("Output: Insert dengan ENUM valid sukses.")
+    
+    cursor.execute("SELECT * FROM transaksi;")
+    print(f"Output Data ENUM: {cursor.fetchall()}")
+    
+    # 2. Test Insert Invalid Enum
+    try:
+        cursor.execute("SAVEPOINT uji_enum;")
+        cursor.execute("INSERT INTO transaksi VALUES (2, 'PROSES');") # Error, tidak ada di ENUM
+    except psycopg2.Error as e:
+        print("Output: Gagal insert karena 'PROSES' bukan bagian dari ENUM!")
+        cursor.execute("ROLLBACK TO SAVEPOINT uji_enum;")
+        
+    print("\nCatatan Meta-Command \\dT:")
+    print("Ketik '\\dT' (tanpa tanda kutip) langsung di prompt terminal psql untuk ")
+    print("melihat seluruh daftar tipe data kustom (termasuk tipe ENUM ini).\n")
+    
+    cursor.execute("DROP TABLE IF EXISTS transaksi;")
+    cursor.execute("DROP TYPE IF EXISTS status_pesanan CASCADE;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 28. FOREIGN KEY BEHAVIOR (SEMUA JENIS)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# Foreign Key Behavior menentukan apa yang harus database lakukan pada baris data di 
+# tabel "anak" (child / dependent) ketika data rujukan utamanya di tabel "induk" (parent) 
+# DIHAPUS (DELETE) atau DIUBAH (UPDATE).
+#
+# JENIS-JENISNYA:
+# 1. NO ACTION (Default) : Menolak penghapusan parent jika masih ada child yang 
+#    merujuk. Penolakan / error dilempar pada akhir transaksi.
+# 2. RESTRICT    : Menolak seketika (langsung error) penghapusan/perubahan parent.
+# 3. CASCADE     : Ikut otomatis menghapus/mengubah baris data di tabel child jika 
+#    baris parent dihapus/diubah.
+# 4. SET NULL    : Kolom FK di tabel child akan diubah menjadi NULL jika parent dihapus.
+# 5. SET DEFAULT : Kolom FK di tabel child akan dikembalikan ke nilai default-nya.
+#
+# FUNGSI:
+# Mempertahankan Referential Integrity (integritas relasi antar data tabel).
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output Uji 1: [RESTRICT] Gagal menghapus parent, dicegah oleh FK!
+# Output Uji 2: [CASCADE] Child ikut terhapus, sisa child: []
+# Output Uji 3: [SET NULL] Parent dihapus, nilai child mjd NULL: [(301, None)]
+# Output Uji 4: [SET DEFAULT] Parent dihapus, child kembali default: [(401, 99)]
+
+print("--- 28. FOREIGN KEY BEHAVIOR (SEMUA JENIS) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS child_default, child_null, child_cascade, child_restrict, parent_table CASCADE;")
+    
+    # Buat Parent
+    cursor.execute("CREATE TABLE parent_table (id INT PRIMARY KEY, nama VARCHAR(50));")
+    
+    # Buat 4 Jenis Child Table dengan Behavior berbeda-beda
+    cursor.execute("CREATE TABLE child_restrict (id INT, p_id INT REFERENCES parent_table(id) ON DELETE RESTRICT);")
+    cursor.execute("CREATE TABLE child_cascade (id INT, p_id INT REFERENCES parent_table(id) ON DELETE CASCADE);")
+    cursor.execute("CREATE TABLE child_null (id INT, p_id INT REFERENCES parent_table(id) ON DELETE SET NULL);")
+    cursor.execute("CREATE TABLE child_default (id INT, p_id INT DEFAULT 99 REFERENCES parent_table(id) ON DELETE SET DEFAULT);")
+    
+    # Insert Data Parent
+    cursor.execute("INSERT INTO parent_table VALUES (1, 'Induk 1'), (2, 'Induk 2'), (3, 'Induk 3'), (4, 'Induk 4'), (99, 'Induk Default');")
+    
+    # Insert Data Child
+    cursor.execute("INSERT INTO child_restrict VALUES (101, 1);")
+    cursor.execute("INSERT INTO child_cascade VALUES (201, 2);")
+    cursor.execute("INSERT INTO child_null VALUES (301, 3);")
+    cursor.execute("INSERT INTO child_default VALUES (401, 4);")
+    print("Output: Tabel dan baris data awal berhasil di-insert.\n")
+    
+    # UJI 1: RESTRICT
+    try:
+        cursor.execute("SAVEPOINT uji_restrict;")
+        cursor.execute("DELETE FROM parent_table WHERE id = 1;")
+    except psycopg2.Error as e:
+        print("Output Uji 1: [RESTRICT/NO ACTION] Gagal menghapus parent (id=1) karena dicegah oleh Foreign Key!")
+        cursor.execute("ROLLBACK TO SAVEPOINT uji_restrict;")
+        
+    # UJI 2: CASCADE
+    cursor.execute("DELETE FROM parent_table WHERE id = 2;")
+    cursor.execute("SELECT * FROM child_cascade;")
+    print(f"Output Uji 2: [CASCADE] Parent id=2 dihapus, baris data child ikut terhapus: {cursor.fetchall()}")
+    
+    # UJI 3: SET NULL
+    cursor.execute("DELETE FROM parent_table WHERE id = 3;")
+    cursor.execute("SELECT * FROM child_null;")
+    print(f"Output Uji 3: [SET NULL] Parent id=3 dihapus, nilai kolom p_id child mjd NULL: {cursor.fetchall()}")
+    
+    # UJI 4: SET DEFAULT
+    cursor.execute("DELETE FROM parent_table WHERE id = 4;")
+    cursor.execute("SELECT * FROM child_default;")
+    print(f"Output Uji 4: [SET DEFAULT] Parent id=4 dihapus, p_id child mjd nilai default (99): {cursor.fetchall()}\n")
+    
+    # Cleanup
+    cursor.execute("DROP TABLE IF EXISTS child_default, child_null, child_cascade, child_restrict, parent_table CASCADE;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 29. JOIN (INNER, LEFT, RIGHT, FULL OUTER, CROSS)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# JOIN digunakan untuk menggabungkan baris dari dua atau lebih tabel berdasarkan
+# kolom terkait (relasi) di antara tabel-tabel tersebut.
+#
+# JENIS-JENIS JOIN UTAMA:
+# 1. INNER JOIN : Mengembalikan baris-baris yang memiliki kecocokan (match) di KEDUA tabel.
+# 2. LEFT JOIN  : Mengembalikan SEMUA baris dari tabel kiri, dan baris yang cocok dari tabel kanan. Jika tidak cocok, tabel kanan berisi NULL.
+# 3. RIGHT JOIN : Mengembalikan SEMUA baris dari tabel kanan, dan baris yang cocok dari tabel kiri. Jika tidak cocok, tabel kiri berisi NULL.
+# 4. FULL JOIN  : Mengembalikan SEMUA baris bila ada kecocokan baik di tabel kiri atau kanan. Menggabungkan hasil LEFT & RIGHT JOIN.
+# 5. CROSS JOIN : Mengembalikan kombinasi perkalian kartesian (Cartesian product) dari kedua tabel. (Setiap baris di tabel A digabung dengan setiap baris di tabel B).
+#
+# FUNGSI:
+# Mengambil dan merelasikan data yang tersebar di banyak tabel menjadi satu hasil yang komprehensif.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Tabel departemen dan karyawan berhasil dibuat dan diisi.
+# Output INNER JOIN: Menampilkan data yang memiliki relasi lengkap.
+# Output LEFT JOIN: Menampilkan semua karyawan, meskipun tidak memiliki departemen.
+# Output FULL JOIN: Menampilkan semua data dari kedua tabel, dengan NULL jika tidak ada relasi.
+
+print("--- 29. JOIN (INNER, LEFT, RIGHT, FULL OUTER, CROSS) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Setup Tabel
+    cursor.execute("DROP TABLE IF EXISTS karyawan, departemen CASCADE;")
+    cursor.execute("CREATE TABLE departemen (id INT PRIMARY KEY, nama_dept VARCHAR(50));")
+    cursor.execute("CREATE TABLE karyawan (id INT PRIMARY KEY, nama VARCHAR(50), dept_id INT);")
+    
+    # Insert Data
+    cursor.execute("INSERT INTO departemen VALUES (1, 'IT'), (2, 'HRD'), (3, 'Finance');")
+    cursor.execute("INSERT INTO karyawan VALUES (101, 'Andi', 1), (102, 'Budi', 2), (103, 'Caca', NULL), (104, 'Deni', 1);")
+    print("Output: Tabel departemen dan karyawan berhasil dibuat dan diisi.\n")
+    
+    # 1. INNER JOIN
+    query_inner = """
+        SELECT k.nama, d.nama_dept 
+        FROM karyawan k
+        INNER JOIN departemen d ON k.dept_id = d.id;
+    """
+    cursor.execute(query_inner)
+    print(f"Output INNER JOIN (Hanya yang cocok):\n{cursor.fetchall()}\n")
+    
+    # 2. LEFT JOIN
+    query_left = """
+        SELECT k.nama, d.nama_dept 
+        FROM karyawan k
+        LEFT JOIN departemen d ON k.dept_id = d.id;
+    """
+    cursor.execute(query_left)
+    print(f"Output LEFT JOIN (Semua karyawan):\n{cursor.fetchall()}\n")
+    
+    # 3. RIGHT JOIN
+    query_right = """
+        SELECT k.nama, d.nama_dept 
+        FROM karyawan k
+        RIGHT JOIN departemen d ON k.dept_id = d.id;
+    """
+    cursor.execute(query_right)
+    print(f"Output RIGHT JOIN (Semua departemen):\n{cursor.fetchall()}\n")
+    
+    # 4. FULL OUTER JOIN
+    query_full = """
+        SELECT k.nama, d.nama_dept 
+        FROM karyawan k
+        FULL OUTER JOIN departemen d ON k.dept_id = d.id;
+    """
+    cursor.execute(query_full)
+    print(f"Output FULL OUTER JOIN (Semua data karyawan & departemen):\n{cursor.fetchall()}\n")
+    
+    # 5. CROSS JOIN
+    query_cross = """
+        SELECT k.nama, d.nama_dept 
+        FROM karyawan k
+        CROSS JOIN departemen d;
+    """
+    cursor.execute(query_cross)
+    # Karena hasilnya panjang (4 karyawan * 3 dept = 12 baris), kita tampilkan panjangnya atau sebagian saja
+    hasil_cross = cursor.fetchall()
+    print(f"Output CROSS JOIN (Perkalian kartesian): Total {len(hasil_cross)} baris data.\n")
+    
+    # Cleanup
+    cursor.execute("DROP TABLE IF EXISTS karyawan, departemen CASCADE;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 30. RECURSIVE CTE (COMMON TABLE EXPRESSIONS)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# CTE (Common Table Expression) adalah hasil set sementara yang diberi nama dan
+# digunakan di dalam sebuah query (didefinisikan menggunakan klausa WITH).
+# Recursive CTE adalah CTE yang memanggil dirinya sendiri.
+#
+# FUNGSI:
+# Sangat berguna untuk mengelola atau menampilkan data hierarkis (struktur tree),
+# seperti struktur organisasi (karyawan dan manajer), kategori bersarang (nested
+# categories), atau sekadar menghasilkan deret angka.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Deret angka 1 sampai 5
+# Output: Hierarki Organisasi (CEO -> Manajer -> Staf)
+#
+print("--- 30. RECURSIVE CTE ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # 1. Contoh Sederhana: Menghasilkan deret angka 1 sampai 5
+    query_deret = """
+        WITH RECURSIVE deret_angka(n) AS (
+            SELECT 1                 -- Base case
+            UNION ALL
+            SELECT n + 1 FROM deret_angka WHERE n < 5 -- Recursive step
+        )
+        SELECT n FROM deret_angka;
+    """
+    cursor.execute(query_deret)
+    print(f"Output Deret Angka 1-5:\n{cursor.fetchall()}\n")
+    
+    # 2. Contoh Hierarki Data Organisasi
+    cursor.execute("DROP TABLE IF EXISTS karyawan_hierarki;")
+    cursor.execute("CREATE TABLE karyawan_hierarki (id INT PRIMARY KEY, nama VARCHAR(50), manajer_id INT);")
+    cursor.execute("INSERT INTO karyawan_hierarki VALUES (1, 'Budi (CEO)', NULL), (2, 'Andi (Manajer IT)', 1), (3, 'Caca (Staf IT)', 2), (4, 'Deni (Staf IT)', 2);")
+    
+    query_hierarki = """
+        WITH RECURSIVE struktur_org AS (
+            -- Base case: Karyawan tanpa manajer (CEO)
+            SELECT id, nama, manajer_id, 1 AS tingkat
+            FROM karyawan_hierarki
+            WHERE manajer_id IS NULL
+            
+            UNION ALL
+            
+            -- Recursive step: Karyawan yang memiliki manajer
+            SELECT k.id, k.nama, k.manajer_id, so.tingkat + 1
+            FROM karyawan_hierarki k
+            INNER JOIN struktur_org so ON k.manajer_id = so.id
+        )
+        SELECT tingkat, nama FROM struktur_org ORDER BY tingkat, id;
+    """
+    cursor.execute(query_hierarki)
+    print(f"Output Hierarki Karyawan (Tingkat, Nama):\n{cursor.fetchall()}\n")
+    
+    # Cleanup
+    cursor.execute("DROP TABLE IF EXISTS karyawan_hierarki;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 31. WINDOW FUNCTIONS (LAG, LEAD, & ROWS BETWEEN)
+# ------------------------------------------------------------------------------
+# APA ITU & FUNGSI:
+# Window Functions melakukan kalkulasi terhadap serangkaian baris (window) yang 
+# terhubung dengan baris saat ini. Berbeda dengan fungsi agregasi (GROUP BY) 
+# yang menggabungkan hasil, Window Function mempertahankan baris aslinya.
+#
+# A. LAG & LEAD:
+# - LAG(): Mengambil nilai dari baris SEBELUMNYA.
+# - LEAD(): Mengambil nilai dari baris SETELAHNYA.
+# *PENTING*: Fungsi ini BISA digunakan untuk melakukan PERHITUNGAN. Misalnya 
+# menghitung persentase kenaikan/penurunan penjualan dari bulan sebelumnya, 
+# selisih harga hari ini dengan kemarin, atau durasi antara event satu dengan lainnya.
+#
+# B. ROWS BETWEEN:
+# Mendefinisikan secara spesifik "jendela" (window frame) baris mana saja yang 
+# dilibatkan dalam kalkulasi. Terdiri dari:
+# - PRECEDING: Baris sebelum baris saat ini (current row).
+# - CURRENT ROW: Baris saat ini.
+# - FOLLOWING: Baris setelah baris saat ini (current row).
+# Contoh: ROWS BETWEEN 1 PRECEDING AND CURRENT ROW (Menghitung baris saat ini 
+# ditambah 1 baris sebelumnya).
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output perhitungan selisih pendapatan dari LAG
+# Output Moving Average menggunakan ROWS BETWEEN
+#
+print("--- 31. WINDOW FUNCTIONS (LAG, LEAD, & ROWS BETWEEN) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute("DROP TABLE IF EXISTS penjualan_harian;")
+    cursor.execute("CREATE TABLE penjualan_harian (tanggal DATE, pendapatan INT);")
+    cursor.execute("INSERT INTO penjualan_harian VALUES ('2023-01-01', 100), ('2023-01-02', 150), ('2023-01-03', 120), ('2023-01-04', 200), ('2023-01-05', 250);")
+    
+    # 1. Menggunakan LAG dan LEAD untuk Perhitungan
+    # Menghitung selisih pendapatan hari ini dibandingkan hari sebelumnya
+    query_lag_lead = """
+        SELECT 
+            tanggal, 
+            pendapatan,
+            LAG(pendapatan) OVER(ORDER BY tanggal) AS pendapatan_kemarin,
+            pendapatan - LAG(pendapatan) OVER(ORDER BY tanggal) AS selisih_dari_kemarin,
+            LEAD(pendapatan) OVER(ORDER BY tanggal) AS pendapatan_besok
+        FROM penjualan_harian;
+    """
+    cursor.execute(query_lag_lead)
+    print("Output LAG & LEAD (Tanggal, Pendapatan, Pendapatan Kemarin, Selisih, Pendapatan Besok):")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+    
+    # 2. Menggunakan ROWS BETWEEN
+    # Menghitung Moving Average (Rata-rata bergerak) untuk 3 hari: 1 hari sebelum, hari ini, dan 1 hari setelah
+    query_rows_between = """
+        SELECT 
+            tanggal, 
+            pendapatan,
+            SUM(pendapatan) OVER(
+                ORDER BY tanggal 
+                ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+            ) AS total_3_hari,
+            AVG(pendapatan) OVER(
+                ORDER BY tanggal 
+                ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+            ) AS avg_2_hari_terakhir
+        FROM penjualan_harian;
+    """
+    cursor.execute(query_rows_between)
+    print("Output ROWS BETWEEN (Tanggal, Pendapatan, Total 3 Hari, Rata-rata 2 Hari Terakhir):")
+    for row in cursor.fetchall():
+        print(row)
+    print()
+    
+    # Cleanup
+    cursor.execute("DROP TABLE IF EXISTS penjualan_harian;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 32. VIEW
+# ------------------------------------------------------------------------------
+# APA ITU & KENAPA DIGUNAKAN:
+# View adalah "tabel virtual" yang isinya didasarkan pada hasil query SQL.
+# Kenapa digunakan:
+# 1. Menyederhanakan query: Query kompleks (banyak JOIN) bisa disimpan sebagai View.
+# 2. Keamanan: Menyembunyikan baris atau kolom sensitif dari pengguna tertentu.
+# 3. Abstraksi/Konsistensi: Menyediakan antarmuka tabel yang tetap, meskipun struktur 
+#    tabel asli (base table) diubah (selama kolom yang di-select tidak hilang).
+#
+# KAPAN MENGGUNAKAN VIEW VS CTE (Common Table Expression):
+# - View: Gunakan ketika query tersebut SANGAT SERING digunakan berulang kali oleh 
+#   berbagai query atau aplikasi lain (karena View bersifat persisten di database).
+# - CTE: Gunakan untuk menyederhanakan satu query kompleks secara SEMENTARA. CTE 
+#   hanya ada selama query tersebut dieksekusi dan tidak disimpan di database.
+#
+# MENGAPA CREATE OR REPLACE VIEW LEBIH BAGUS DARI MENGHAPUS & MEMBUAT BARU:
+# Jika kita melakukan DROP VIEW lalu CREATE VIEW, object lain yang bergantung pada 
+# view tersebut (misal view lain) akan error atau ikut terhapus.
+# CREATE OR REPLACE VIEW akan mengubah query di balik view tanpa menghapus object 
+# view itu sendiri, sehingga dependensi (hubungan dengan object lain) tetap aman.
+#
+# RESTRICT & CASCADE SAAT DROP VIEW:
+# - RESTRICT (Default): Membatalkan penghapusan (DROP) jika ada object lain yang 
+#   bergantung pada view tersebut.
+# - CASCADE: Menghapus view tersebut BESERTA semua object lain yang bergantung padanya.
+#
+# UPDATABLE VIEW (VIEW YANG BISA DIUPDATE):
+# View bisa di-INSERT, UPDATE, atau DELETE (dan otomatis mengubah tabel aslinya) JIKA:
+# View tersebut sederhana, biasanya hanya dari 1 tabel dasar, TANPA fungsi agregat 
+# (SUM, AVG), TANPA GROUP BY, HAVING, DISTINCT, UNION, atau LIMIT.
+#
+# VIEW YANG TIDAK BISA DIUPDATE SEMBARANGAN:
+# View yang kompleks (banyak tabel dengan JOIN, agregasi, subquery). PostgreSQL 
+# tidak tahu baris/tabel mana yang harus diubah jika kita melakukan update pada view 
+# tersebut (Kecuali kita membuat trigger INSTEAD OF).
+#
+# WITH CHECK OPTION:
+# Opsi keamanan pada View. Memastikan data yang di-INSERT atau di-UPDATE melalui 
+# View HARUS memenuhi kondisi WHERE di dalam View tersebut. Jika tidak memenuhi, 
+# operasi akan ditolak.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Data view setelah diupdate, memperlihatkan bahwa data berhasil diubah.
+#
+print("--- 32. VIEW ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    
+    # Persiapan Tabel Base
+    cursor.execute("DROP TABLE IF EXISTS tb_pegawai CASCADE;")
+    cursor.execute("""
+        CREATE TABLE tb_pegawai (
+            id SERIAL PRIMARY KEY,
+            nama VARCHAR(50),
+            departemen VARCHAR(50),
+            gaji INT
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO tb_pegawai (nama, departemen, gaji) VALUES 
+        ('Andi', 'IT', 7000000), 
+        ('Budi', 'HR', 5000000), 
+        ('Citra', 'IT', 8500000),
+        ('Dewi', 'Finance', 9000000);
+    """)
+    
+    # 1. Membuat View Sederhana (Updatable View)
+    cursor.execute("""
+        CREATE OR REPLACE VIEW view_pegawai_it AS 
+        SELECT id, nama, departemen, gaji 
+        FROM tb_pegawai 
+        WHERE departemen = 'IT';
+    """)
+    
+    # 2. Mengupdate Data Melalui View (Akan mengubah tb_pegawai juga)
+    cursor.execute("UPDATE view_pegawai_it SET gaji = 7500000 WHERE nama = 'Andi';")
+    
+    # 3. Membuat View dengan WITH CHECK OPTION
+    cursor.execute("""
+        CREATE OR REPLACE VIEW view_pegawai_hr AS 
+        SELECT id, nama, departemen, gaji 
+        FROM tb_pegawai 
+        WHERE departemen = 'HR'
+        WITH CHECK OPTION;
+    """)
+    
+    # Jika kita insert pegawai IT melalui view_pegawai_hr, akan ERROR, tapi karena
+    # kita berada di dalam block try-except, query tersebut di-comment saja sebagai contoh:
+    # cursor.execute("INSERT INTO view_pegawai_hr (nama, departemen, gaji) VALUES ('Eko', 'IT', 6000000);") 
+    
+    # Mari kita select data view nya
+    cursor.execute("SELECT * FROM view_pegawai_it;")
+    print(f"Data view_pegawai_it (Gaji Andi sudah update menjadi 7500000):\n{cursor.fetchall()}\n")
+    
+    # Cleanup ( CASCADE juga akan menghapus view_pegawai_it dan view_pegawai_hr )
+    cursor.execute("DROP TABLE IF EXISTS tb_pegawai CASCADE;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
 finally:
     if conn:
         conn.close()
