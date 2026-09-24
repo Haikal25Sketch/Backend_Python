@@ -1360,7 +1360,7 @@ finally:
 # - Pada versi lebih lama, kita bisa menggunakan extension `uuid-ossp` dengan
 #   menjalankan query: CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; dan menggunakan
 #   fungsi `uuid_generate_v4()`.
-#
+# Tapi ada juga versi yang lebih aman jika user ingin menjadikannya sebagai primary key yaitu 'uuidv7()'.
 # KEMUNGKINAN OUTPUT:
 # Output: Berhasil membuat tabel dengan UUID
 # Output UUID Acak yang dihasilkan: 32 karakter acak (contoh: 550e8400-e29b-41d4-a716-446655440000)
@@ -2200,6 +2200,202 @@ try:
     
     # Cleanup ( CASCADE juga akan menghapus view_pegawai_it dan view_pegawai_hr )
     cursor.execute("DROP TABLE IF EXISTS tb_pegawai CASCADE;")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+# ==============================================================================
+# 33. MATERIALIZED VIEW
+# ==============================================================================
+#
+# PENGERTIAN MATERIALIZED VIEW:
+# Materialized View mirip dengan View biasa, tetapi perbedaannya adalah 
+# Materialized View menyimpan BENTUK FISIK dari hasil query tersebut di dalam disk.
+# 
+# PERBEDAAN DENGAN VIEW BIASA:
+# - View Biasa: Hanya menyimpan query-nya saja. Setiap kali kita me-SELECT view 
+#   tersebut, database akan menjalankan ulang query aslinya secara real-time.
+# - Materialized View: Menjalankan query sekali pada saat dibuat (atau direfresh) 
+#   dan menyimpan hasilnya secara permanen (layaknya tabel sungguhan).
+#
+# KEUNTUNGAN:
+# - Sangat cepat untuk dibaca (SELECT) karena datanya sudah tersedia, sangat cocok 
+#   untuk query analitik/laporan kompleks yang membutuhkan waktu lama (misal: 
+#   agregasi dari jutaan baris data, join kompleks).
+#
+# KEKURANGAN:
+# - Data tidak real-time. Jika tabel asli (base table) berubah, data di Materialized 
+#   View TIDAK akan berubah sampai kita melakukan REFRESH MATERIALIZED VIEW.
+#
+print("--- 33. MATERIALIZED VIEW ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Persiapan
+    cursor.execute("DROP MATERIALIZED VIEW IF EXISTS mv_laporan_penjualan;")
+    cursor.execute("DROP TABLE IF EXISTS tb_penjualan CASCADE;")
+    
+    cursor.execute("""
+        CREATE TABLE tb_penjualan (
+            id SERIAL PRIMARY KEY,
+            produk VARCHAR(50),
+            jumlah INT,
+            harga_satuan INT
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO tb_penjualan (produk, jumlah, harga_satuan) VALUES 
+        ('Laptop', 2, 10000000), 
+        ('Mouse', 10, 150000), 
+        ('Keyboard', 5, 500000);
+    """)
+
+    # 1. Membuat Materialized View
+    # Menyimpan hasil agregasi ke dalam materialized view
+    cursor.execute("""
+        CREATE MATERIALIZED VIEW mv_laporan_penjualan AS
+        SELECT produk, sum(jumlah * harga_satuan) AS total_pendapatan
+        FROM tb_penjualan
+        GROUP BY produk;
+    """)
+
+    # Menampilkan data Materialized View
+    cursor.execute("SELECT * FROM mv_laporan_penjualan;")
+    print(f"Data Materialized View AWAL:\n{cursor.fetchall()}\n")
+
+    # 2. Perubahan pada Tabel Asli
+    # Kita masukkan data baru ke tabel asli
+    cursor.execute("INSERT INTO tb_penjualan (produk, jumlah, harga_satuan) VALUES ('Mouse', 5, 150000);")
+    
+    # 3. SELECT Materialized View Sebelum Refresh
+    # Data di mv_laporan_penjualan belum berubah (TIDAK real-time)
+    cursor.execute("SELECT * FROM mv_laporan_penjualan WHERE produk = 'Mouse';")
+    print(f"Data Materialized View untuk Mouse SEBELUM Refresh (Masih lama):\n{cursor.fetchall()}\n")
+
+    # 4. REFRESH MATERIALIZED VIEW
+    # Memperbarui data Materialized View agar sinkron dengan data tabel asli saat ini
+    cursor.execute("REFRESH MATERIALIZED VIEW mv_laporan_penjualan;")
+    
+    # 5. SELECT Materialized View Setelah Refresh
+    cursor.execute("SELECT * FROM mv_laporan_penjualan WHERE produk = 'Mouse';")
+    print(f"Data Materialized View untuk Mouse SETELAH Refresh (Sudah terupdate):\n{cursor.fetchall()}\n")
+
+    # Cleanup
+    cursor.execute("DROP MATERIALIZED VIEW IF EXISTS mv_laporan_penjualan;")
+    cursor.execute("DROP TABLE IF EXISTS tb_penjualan CASCADE;")
+    
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+# ==============================================================================
+# 34. CREATE FUNCTION (STORED FUNCTION)
+# ==============================================================================
+#
+# PENGERTIAN FUNCTION:
+# Function di PostgreSQL memungkinkan kita menyimpan sekumpulan logika/blok kode 
+# SQL atau prosedural (PL/pgSQL) di dalam database server.
+#
+# KEGUNAAN:
+# - Reusability: Kode yang sering digunakan bisa disimpan di database, lalu 
+#   dipanggil oleh berbagai aplikasi tanpa perlu menulis ulang query/logika kompleks.
+# - Performa: Mengurangi traffic jaringan (network traffic) karena proses dilakukan 
+#   langsung di server database.
+# - Keamanan: Membatasi akses langsung ke tabel dan mengharuskan user melewati 
+#   logika di dalam function.
+#
+# STRUKTUR DASAR (PL/pgSQL):
+# CREATE [OR REPLACE] FUNCTION nama_fungsi(parameter1 tipe_data, ...) 
+# RETURNS tipe_data_return AS $$
+# DECLARE
+#    -- deklarasi variabel lokal (opsional)
+# BEGIN
+#    -- blok logika / query
+#    RETURN nilai_kembalian;
+# END;
+# $$ LANGUAGE plpgsql;
+#
+print("--- 34. CREATE FUNCTION ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # 1. Membuat Function yang menerima 2 angka dan mengembalikan hasil kalinya
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION hitung_perkalian(a INT, b INT)
+        RETURNS INT AS $$
+        BEGIN
+            RETURN a * b;
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    # Memanggil Function
+    cursor.execute("SELECT hitung_perkalian(15, 4);")
+    hasil_kali = cursor.fetchone()[0]
+    print(f"Hasil panggil function hitung_perkalian(15, 4): {hasil_kali}\n")
+
+    # 2. Function kompleks (mengambil data dari tabel)
+    cursor.execute("DROP TABLE IF EXISTS tb_produk CASCADE;")
+    cursor.execute("""
+        CREATE TABLE tb_produk (
+            id SERIAL PRIMARY KEY,
+            nama_produk VARCHAR(100),
+            stok INT
+        );
+    """)
+    cursor.execute("INSERT INTO tb_produk (nama_produk, stok) VALUES ('Meja', 20), ('Kursi', 50);")
+
+    # Function untuk mengecek apakah stok cukup untuk dibeli
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION cek_ketersediaan_stok(p_id_produk INT, p_jumlah_diminta INT)
+        RETURNS BOOLEAN AS $$
+        DECLARE
+            v_stok_tersedia INT;
+        BEGIN
+            -- Ambil stok produk masukkan ke variabel lokal
+            SELECT stok INTO v_stok_tersedia FROM tb_produk WHERE id = p_id_produk;
+            
+            -- Logika kondisi
+            IF v_stok_tersedia >= p_jumlah_diminta THEN
+                RETURN TRUE;
+            ELSE
+                RETURN FALSE;
+            END IF;
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    # Memanggil Function kompleks
+    cursor.execute("SELECT cek_ketersediaan_stok(1, 15);") # Meja stok 20, diminta 15 (cukup)
+    cukup_1 = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT cek_ketersediaan_stok(2, 60);") # Kursi stok 50, diminta 60 (tidak cukup)
+    cukup_2 = cursor.fetchone()[0]
+
+    print(f"Apakah stok Meja cukup untuk 15 barang? {cukup_1}")
+    print(f"Apakah stok Kursi cukup untuk 60 barang? {cukup_2}\n")
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS hitung_perkalian(INT, INT);")
+    cursor.execute("DROP FUNCTION IF EXISTS cek_ketersediaan_stok(INT, INT);")
+    cursor.execute("DROP TABLE IF EXISTS tb_produk CASCADE;")
+
     conn.commit()
     cursor.close()
 except Exception as e:
