@@ -19,7 +19,7 @@ print("=== BELAJAR DASAR POSTGRESQL DENGAN PYTHON ===\n")
 # Konfigurasi Database (Sesuaikan dengan kredensial Anda)
 DB_CONFIG = {
     "dbname": "postgres",
-    "user": "u0_a317",
+    "user": "u0_a257",
     "password": "password",
     "host": "127.0.0.1",
     "port": "5432"
@@ -1516,7 +1516,7 @@ try:
     """
     cursor.execute(query_create)
     
-    # Data JSON/Dictionary dari Python yang akan dimasukkan ke database
+    #Data JSON/Dictionary dari Python yang akan dimasukkan ke database
     # psycopg2 otomatis mem-parsing Dictionary Python menjadi string JSON untuk PostgreSQL
     import json
     data_profil = {
