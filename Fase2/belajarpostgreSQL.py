@@ -2405,3 +2405,196 @@ except Exception as e:
 finally:
     if conn:
         conn.close()
+
+
+# ==============================================================================
+# 35. STRUKTUR FUNCTION, KONTRAK RETURNS (SCALAR, SETOF, TABLE) & LANGUAGE SQL
+# ==============================================================================
+#
+# PENGERTIAN & FUNGSI POSTGRESQL FUNCTION:
+# Function di PostgreSQL adalah sekumpulan perintah SQL atau logika prosedural yang
+# disimpan di sisi database server dan dapat dipanggil kapan saja layaknya fungsi bawaan.
+# Fungsinya:
+# 1. Enkapsulasi Logika Bisnis: Menjaga query kompleks tetap rapi di database.
+# 2. Reusabilitas Kode: Bisa dipanggil oleh berbagai query, trigger, atau aplikasi berbeda.
+# 3. Efisiensi & Performa: Mengurangi lalu lintas jaringan (network roundtrip) karena
+#    query dieksekusi langsung di internal server PostgreSQL.
+# 4. Keamanan: Menyediakan antarmuka terkontrol untuk mengakses data tanpa memberi
+#    akses tabel secara langsung kepada user.
+#
+# STRUKTUR DASAR CREATE FUNCTION:
+# CREATE [OR REPLACE] FUNCTION nama_fungsi(
+#     nama_param1 tipe_data,
+#     nama_param2 tipe_data
+# )
+# RETURNS kontrak_output AS $$
+#     -- Body query SQL atau blok PL/pgSQL
+# $$ LANGUAGE sql;
+#
+# PARAMETER & TIPE DATA:
+# - Parameter menerima nilai argumen input saat fungsi dipanggil.
+# - Tipe data parameter mendukung semua tipe PostgreSQL (TEXT, INT, NUMERIC, BOOLEAN, DATE, JSONB, dll).
+# - Parameter dapat diberi nama eksplisit (contoh: `p_kategori TEXT`) atau berupa parameter tanpa nama ($1, $2).
+#
+# RETURNS SEBAGAI KONTRAK OUTPUT:
+# Klausa `RETURNS` mendefinisikan "kontrak" bentuk dan tipe data yang wajib dihasilkan oleh body:
+# 1. RETURNS text (Scalar / Satu Nilai):
+#    - Mengembalikan tepat SATU NILAI TUNGGAL (single value).
+#    - Cocok untuk kalkulasi, pencarian 1 kolom spesifik dari 1 data, atau agregasi.
+# 2. RETURNS SETOF text (Banyak Nilai / 1 Kolom Multi-Baris):
+#    - Mengembalikan KUMPULAN NILAI (0, 1, atau banyak baris) dalam bentuk 1 kolom.
+#    - Cocok untuk menghasilkan list deretan teks (misal: daftar nama produk).
+# 3. RETURNS TABLE (kolom1 tipe1, kolom2 tipe2, ...) (Banyak Baris & Beberapa Kolom):
+#    - Mengembalikan data TABULAR (banyak baris & beberapa kolom) dengan skema yang jelas.
+#    - Hasil pemanggilan fungsinya dapat diperlakukan layaknya tabel/view (bisa di-SELECT, di-WHERE, di-JOIN).
+#
+# LANGUAGE SQL:
+# - Menulis fungsi menggunakan instruksi pure SQL standar tanpa blok prosedural PL/pgSQL (`BEGIN ... END;`).
+# - Eksekusinya sangat ringan dan dapat dioptimasi (inlined) oleh PostgreSQL Query Planner.
+# - Output dari query SELECT terakhir di dalam body secara otomatis menjadi nilai balikan (return) fungsi.
+#
+# PARAMETER DALAM WHERE:
+# Parameter fungsi dapat langsung disematkan pada klausa `WHERE` di query SQL untuk memfilter
+# data secara dinamis berdasarkan input yang diberikan pemanggil fungsi.
+#
+# NULL VS 0 ROWS (PERBEDAAN FUNDAMENTAL):
+# - Fungsi Skalar (`RETURNS text`):
+#   Jika filter WHERE tidak menemukan data yang cocok, query menghasilkan nilai `NULL` (1 baris bernilai NULL/None).
+# - Fungsi Set / Tabel (`RETURNS SETOF text` / `RETURNS TABLE(...)`):
+#   Jika filter WHERE tidak menemukan data yang cocok, fungsi menghasilkan himpunan kosong yaitu `0 rows` (bukan 1 baris NULL).
+#
+# KESESUAIAN OUTPUT BODY DENGAN RETURNS:
+# Query SQL di dalam body WAJIB menghasilkan kolom dan tipe data yang presisi sesuai kontrak RETURNS:
+# - Jumlah kolom pada SELECT harus sama dengan jumlah kolom pada RETURNS / RETURNS TABLE.
+# - Urutan dan tipe data tiap kolom harus cocok dengan tipe yang dideklarasikan.
+# - Jika terdapat ketidakcocokan, PostgreSQL akan mengembalikan error saat eksekusi.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output Scalar (RETURNS text): 'Laptop Asus Rog'
+# Output Scalar saat data tidak ada (Menghasilkan NULL): None
+# Output SETOF (RETURNS SETOF text): [('Laptop Asus Rog',), ('Keyboard Mechanical',)]
+# Output SETOF saat data tidak ada (Menghasilkan 0 rows): []
+# Output TABLE (RETURNS TABLE): [(1, 'Laptop Asus Rog', 'Elektronik', 15000000), (2, 'Keyboard Mechanical', 'Elektronik', 850000)]
+# Output TABLE saat data tidak ada (Menghasilkan 0 rows): []
+
+print("--- 35. STRUKTUR FUNCTION, KONTRAK RETURNS & LANGUAGE SQL ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Persiapan Tabel Latihan
+    cursor.execute("DROP TABLE IF EXISTS barang_inventaris CASCADE;")
+    cursor.execute("""
+        CREATE TABLE barang_inventaris (
+            id SERIAL PRIMARY KEY,
+            nama_barang VARCHAR(100),
+            kategori VARCHAR(50),
+            harga BIGINT
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO barang_inventaris (nama_barang, kategori, harga) VALUES
+        ('Laptop Asus Rog', 'Elektronik', 15000000),
+        ('Keyboard Mechanical', 'Elektronik', 850000),
+        ('Meja Kerja Minimalis', 'Furnitur', 1200000),
+        ('Kursi Ergonomis', 'Furnitur', 2100000);
+    """)
+
+    # --------------------------------------------------------------------------
+    # 1. RETURNS text (SCALAR / SATU NILAI) & PARAMETER DALAM WHERE DENGAN LANGUAGE SQL
+    # --------------------------------------------------------------------------
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION ambil_nama_barang_by_id(p_id INT)
+        RETURNS text AS $$
+            SELECT nama_barang 
+            FROM barang_inventaris 
+            WHERE id = p_id;
+        $$ LANGUAGE sql;
+    """)
+
+    # Panggil fungsi scalar dengan ID yang ada
+    cursor.execute("SELECT ambil_nama_barang_by_id(1);")
+    nama_barang = cursor.fetchone()[0]
+    print(f"1. Output RETURNS text (Scalar): {nama_barang}")
+
+    # Panggil fungsi scalar dengan ID yang TIDAK ADA (Membuktikan hasil NULL)
+    cursor.execute("SELECT ambil_nama_barang_by_id(999);")
+    hasil_null = cursor.fetchone()[0]
+    print(f"   Output RETURNS text ketika data tidak ditemukan (NULL): {hasil_null}\n")
+
+    # --------------------------------------------------------------------------
+    # 2. RETURNS SETOF text (BANYAK NILAI / 1 KOLOM BANYAK BARIS)
+    # --------------------------------------------------------------------------
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION daftar_barang_by_kategori(p_kategori VARCHAR)
+        RETURNS SETOF text AS $$
+            SELECT nama_barang 
+            FROM barang_inventaris 
+            WHERE kategori = p_kategori;
+        $$ LANGUAGE sql;
+    """)
+
+    # Panggil fungsi SETOF dengan kategori 'Elektronik'
+    cursor.execute("SELECT daftar_barang_by_kategori('Elektronik');")
+    daftar_elektronik = cursor.fetchall()
+    print(f"2. Output RETURNS SETOF text:\n   {daftar_elektronik}")
+
+    # Panggil fungsi SETOF dengan kategori yang TIDAK ADA (Membuktikan hasil 0 rows)
+    cursor.execute("SELECT daftar_barang_by_kategori('Otomotif');")
+    hasil_0_rows_setof = cursor.fetchall()
+    print(f"   Output RETURNS SETOF text ketika data tidak ditemukan (0 rows): {hasil_0_rows_setof}\n")
+
+    # --------------------------------------------------------------------------
+    # 3. RETURNS TABLE (...) (BANYAK BARIS & BEBERAPA KOLOM TABULAR)
+    # --------------------------------------------------------------------------
+    # Kesesuaian output body: SELECT id, nama_barang, kategori, harga cocok dengan
+    # definisi kolom dan tipe data pada RETURNS TABLE.
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION filter_barang_lengkap(p_kategori VARCHAR, p_max_harga BIGINT)
+        RETURNS TABLE (
+            barang_id INT,
+            nama_produk TEXT,
+            kategori_produk VARCHAR,
+            harga_produk BIGINT
+        ) AS $$
+            SELECT id, CAST(nama_barang AS TEXT), kategori, harga
+            FROM barang_inventaris
+            WHERE kategori = p_kategori AND harga <= p_max_harga;
+        $$ LANGUAGE sql;
+    """)
+
+    # Panggil fungsi TABLE seperti memanggil tabel/view
+    cursor.execute("SELECT * FROM filter_barang_lengkap('Elektronik', 20000000);")
+    hasil_tabel = cursor.fetchall()
+    print(f"3. Output RETURNS TABLE (Tabular):\n   {hasil_tabel}")
+
+    # Panggil fungsi TABLE saat data tidak ditemukan (0 rows)
+    cursor.execute("SELECT * FROM filter_barang_lengkap('Elektronik', 50000);")
+    hasil_0_rows_table = cursor.fetchall()
+    print(f"   Output RETURNS TABLE ketika data tidak ditemukan (0 rows): {hasil_0_rows_table}\n")
+
+    # --------------------------------------------------------------------------
+    # 4. RINGKASAN: NULL VS 0 ROWS
+    # --------------------------------------------------------------------------
+    print("4. Ringkasan Perbedaan NULL vs 0 rows:")
+    print("   - Scalar (RETURNS text)  -> Ketika tidak ada baris cocok: Mengembalikan 1 baris berisi NULL (None di Python).")
+    print("   - Set/Table (RETURNS SETOF / TABLE) -> Ketika tidak ada baris cocok: Mengembalikan 0 baris (list kosong [] di Python).\n")
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS ambil_nama_barang_by_id(INT);")
+    cursor.execute("DROP FUNCTION IF EXISTS daftar_barang_by_kategori(VARCHAR);")
+    cursor.execute("DROP FUNCTION IF EXISTS filter_barang_lengkap(VARCHAR, BIGINT);")
+    cursor.execute("DROP TABLE IF EXISTS barang_inventaris CASCADE;")
+
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi Function, Contracts & Language SQL.\n")
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
