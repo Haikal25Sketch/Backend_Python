@@ -2598,3 +2598,577 @@ finally:
     if conn:
         conn.close()
 
+
+# ------------------------------------------------------------------------------
+# 36. SELECT INTO STRICT, %ROWTYPE, %TYPE, DAN EXCEPTION DALAM FUNCTION
+# ------------------------------------------------------------------------------
+# APA ITU:
+# - SELECT INTO: Perintah PL/pgSQL untuk mengambil hasil query dan menyimpannya
+#   langsung ke dalam variabel lokal di dalam sebuah function.
+# - STRICT: Modifier untuk SELECT INTO. Jika dipakai (SELECT INTO STRICT), maka
+#   query WAJIB mengembalikan tepat 1 baris. Jika hasilnya 0 baris, akan memunculkan
+#   exception NO_DATA_FOUND. Jika hasilnya lebih dari 1 baris, akan memunculkan
+#   exception TOO_MANY_ROWS.
+# - %TYPE: Digunakan untuk mendeklarasikan variabel dengan tipe data yang sama
+#   persis seperti tipe kolom tertentu di sebuah tabel. Contoh: var_harga barang.harga%TYPE
+#   Artinya: variabel var_harga bertipe data sama dengan kolom 'harga' di tabel 'barang'.
+# - %ROWTYPE: Digunakan untuk mendeklarasikan variabel yang strukturnya (semua kolomnya)
+#   sama persis seperti satu baris (row) dari suatu tabel. Contoh: rec_barang barang%ROWTYPE.
+#   Variabel ini bisa menyimpan seluruh kolom dari satu baris tabel sekaligus.
+# - EXCEPTION: Blok di PL/pgSQL (mirip try-except di Python) untuk menangkap error
+#   atau kondisi khusus yang terjadi di dalam sebuah function.
+#
+# FUNGSI:
+# - SELECT INTO STRICT: Memastikan data yang diambil pasti ada dan tunggal, mencegah
+#   bug akibat query yang tidak sengaja mengembalikan banyak baris atau nol baris.
+# - %TYPE: Membuat kode lebih mudah dirawat (maintainable). Jika tipe kolom di tabel
+#   berubah, variabel yang menggunakan %TYPE ikut berubah otomatis tanpa perlu edit manual.
+# - %ROWTYPE: Menyederhanakan kode ketika perlu menyimpan seluruh isi satu baris tabel.
+#   Sering dipakai di fungsi yang bekerja baris per baris.
+# - EXCEPTION: Memungkinkan function menangani skenario error dengan elegan
+#   (misal: mengembalikan NULL alih-alih membuat seluruh aplikasi crash).
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: --- 36. SELECT INTO STRICT, %ROWTYPE, %TYPE, DAN EXCEPTION ---
+# Output 1 (Sukses): Produk: Laptop Gaming, Kategori: Elektronik, Harga: 15000000
+# Output 2 (Tidak ditemukan): Produk dengan ID 999 tidak ditemukan.
+# Output 3 (%ROWTYPE): ID: 1, Nama: Laptop Gaming, Harga: 15000000
+
+print("--- 36. SELECT INTO STRICT, %ROWTYPE, %TYPE, DAN EXCEPTION ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Buat tabel dan data untuk contoh ini
+    cursor.execute("DROP TABLE IF EXISTS produk_elektronik CASCADE;")
+    cursor.execute("""
+        CREATE TABLE produk_elektronik (
+            id      SERIAL PRIMARY KEY,
+            nama    VARCHAR(100),
+            kategori VARCHAR(50),
+            harga   BIGINT
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO produk_elektronik (nama, kategori, harga) VALUES
+        ('Laptop Gaming', 'Elektronik', 15000000),
+        ('Mouse Wireless', 'Elektronik', 350000),
+        ('Keyboard Mekanikal', 'Aksesoris', 850000);
+    """)
+    conn.commit()
+
+    # --------------------------------------------------------------------------
+    # 1. SELECT INTO STRICT dengan EXCEPTION (NO_DATA_FOUND & TOO_MANY_ROWS)
+    # --------------------------------------------------------------------------
+    # Function ini mencari produk berdasarkan ID menggunakan SELECT INTO STRICT.
+    # Jika tidak ditemukan -> tangkap NO_DATA_FOUND.
+    # %TYPE dipakai agar tipe variabel otomatis mengikuti tipe kolom di tabel.
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION cari_produk_by_id(p_id INT)
+        RETURNS TEXT AS $$
+        DECLARE
+            v_nama     produk_elektronik.nama%TYPE;
+            v_kategori produk_elektronik.kategori%TYPE;
+            v_harga    produk_elektronik.harga%TYPE;
+        BEGIN
+            -- SELECT INTO STRICT: wajib dapat tepat 1 baris
+            SELECT nama, kategori, harga
+            INTO STRICT v_nama, v_kategori, v_harga
+            FROM produk_elektronik
+            WHERE id = p_id;
+
+            RETURN 'Produk: ' || v_nama || ', Kategori: ' || v_kategori || ', Harga: ' || v_harga;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RETURN 'Produk dengan ID ' || p_id || ' tidak ditemukan.';
+            WHEN TOO_MANY_ROWS THEN
+                RETURN 'Query mengembalikan lebih dari 1 baris!';
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    # Panggil fungsi: ID yang ADA (sukses)
+    cursor.execute("SELECT cari_produk_by_id(1);")
+    print(f"Output 1 (ID ditemukan)     : {cursor.fetchone()[0]}")
+
+    # Panggil fungsi: ID yang TIDAK ADA (tangkap NO_DATA_FOUND)
+    cursor.execute("SELECT cari_produk_by_id(999);")
+    print(f"Output 2 (ID tidak ada)     : {cursor.fetchone()[0]}")
+
+    # --------------------------------------------------------------------------
+    # 2. %ROWTYPE: Menyimpan satu baris penuh ke dalam variabel rekaman
+    # --------------------------------------------------------------------------
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION ambil_baris_produk(p_id INT)
+        RETURNS TEXT AS $$
+        DECLARE
+            rec_produk produk_elektronik%ROWTYPE;
+        BEGIN
+            -- %ROWTYPE: variabel bisa menampung seluruh kolom 1 baris
+            SELECT * INTO STRICT rec_produk
+            FROM produk_elektronik
+            WHERE id = p_id;
+
+            RETURN 'ID: ' || rec_produk.id ||
+                   ', Nama: ' || rec_produk.nama ||
+                   ', Harga: ' || rec_produk.harga;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RETURN 'Baris dengan ID ' || p_id || ' tidak ditemukan.';
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    cursor.execute("SELECT ambil_baris_produk(1);")
+    print(f"Output 3 (%ROWTYPE)         : {cursor.fetchone()[0]}")
+
+    cursor.execute("SELECT ambil_baris_produk(99);")
+    print(f"Output 4 (%ROWTYPE not found): {cursor.fetchone()[0]}\n")
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS cari_produk_by_id(INT);")
+    cursor.execute("DROP FUNCTION IF EXISTS ambil_baris_produk(INT);")
+    cursor.execute("DROP TABLE IF EXISTS produk_elektronik CASCADE;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi SELECT INTO STRICT, %TYPE, %ROWTYPE & EXCEPTION.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 37. RAISE EXCEPTION DALAM FUNCTION (CUSTOM ERROR)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# RAISE EXCEPTION adalah perintah PL/pgSQL untuk "melempar" (throw) sebuah error
+# secara sengaja dari dalam function. Perintah ini menghentikan eksekusi function
+# dan mengembalikan pesan error ke pemanggil (caller).
+#
+# SINTAKS UMUM:
+#   RAISE EXCEPTION 'Pesan error: %', variabel;
+#
+# PARAMETER TAMBAHAN (Opsional tapi penting):
+#   USING ERRCODE = 'kode_sqlstate' --> Memberikan kode error SQLSTATE custom
+#                                       (misal: 'P0001' untuk custom application error)
+#   USING DETAIL  = 'Detail teknis' --> Informasi teknis tambahan tentang error
+#   USING HINT    = 'Saran solusi'  --> Saran untuk pengguna/developer agar error bisa diselesaikan
+#   USING MESSAGE = 'Pesan utama'   --> Pesan utama error (alternatif sintaks)
+#
+# FUNGSI:
+# - Validasi bisnis: Menolak data yang tidak valid (misal: stok negatif, harga nol).
+# - Memberikan pesan error yang bermakna (human-readable) daripada hanya kode error teknis.
+# - Memastikan integritas data sebelum operasi tulis (INSERT/UPDATE) dilakukan.
+# - Membantu developer men-debug masalah dengan cepat melalui DETAIL dan HINT.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output 1 (Validasi OK)  : Berhasil tambah stok: Stok 'Laptop' diperbarui menjadi 15 unit.
+# Output 2 (RAISE ERROR)  : [RAISE EXCEPTION ditangkap] P0001 - Stok tidak boleh negatif! ...
+# Output 3 (Harga nol)    : [RAISE EXCEPTION ditangkap] P0002 - Harga produk tidak boleh nol atau negatif!
+
+print("--- 37. RAISE EXCEPTION DALAM FUNCTION (CUSTOM ERROR) ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Buat tabel stok barang
+    cursor.execute("DROP TABLE IF EXISTS stok_barang CASCADE;")
+    cursor.execute("""
+        CREATE TABLE stok_barang (
+            id      SERIAL PRIMARY KEY,
+            nama    VARCHAR(100) NOT NULL,
+            stok    INT NOT NULL DEFAULT 0,
+            harga   BIGINT NOT NULL DEFAULT 0
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO stok_barang (nama, stok, harga) VALUES
+        ('Laptop', 10, 12000000),
+        ('Mouse', 50, 150000);
+    """)
+    conn.commit()
+
+    # Function dengan RAISE EXCEPTION untuk validasi bisnis
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION tambah_stok(p_id INT, p_tambah INT)
+        RETURNS TEXT AS $$
+        DECLARE
+            v_nama  stok_barang.nama%TYPE;
+            v_stok  stok_barang.stok%TYPE;
+        BEGIN
+            -- Validasi: jumlah tambahan harus positif
+            IF p_tambah <= 0 THEN
+                RAISE EXCEPTION 'Stok tidak boleh negatif atau nol! Nilai yang dimasukkan: %', p_tambah
+                    USING ERRCODE = 'P0001',
+                          DETAIL  = 'Parameter p_tambah harus bernilai lebih dari 0.',
+                          HINT    = 'Masukkan nilai positif untuk menambah stok.';
+            END IF;
+
+            -- Ambil data barang
+            SELECT nama, stok INTO STRICT v_nama, v_stok
+            FROM stok_barang WHERE id = p_id;
+
+            -- Update stok
+            UPDATE stok_barang SET stok = stok + p_tambah WHERE id = p_id;
+
+            RETURN 'Stok ''' || v_nama || ''' diperbarui menjadi ' || (v_stok + p_tambah) || ' unit.';
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE EXCEPTION 'Barang dengan ID % tidak ditemukan!', p_id
+                    USING ERRCODE = 'P0003';
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    # Function dengan RAISE EXCEPTION untuk validasi harga
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION update_harga(p_id INT, p_harga_baru BIGINT)
+        RETURNS TEXT AS $$
+        BEGIN
+            IF p_harga_baru <= 0 THEN
+                RAISE EXCEPTION 'Harga produk tidak boleh nol atau negatif! Harga yang diinput: %', p_harga_baru
+                    USING ERRCODE = 'P0002',
+                          DETAIL  = 'Harga harus berupa bilangan positif.',
+                          HINT    = 'Periksa kembali nilai harga yang Anda masukkan.';
+            END IF;
+
+            UPDATE stok_barang SET harga = p_harga_baru WHERE id = p_id;
+            RETURN 'Harga berhasil diperbarui menjadi ' || p_harga_baru;
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+    conn.commit()
+
+    # 1. Panggil dengan input VALID (berhasil)
+    cursor.execute("SELECT tambah_stok(1, 5);")
+    print(f"Output 1 (Validasi OK)   : Berhasil tambah stok: {cursor.fetchone()[0]}")
+    conn.commit()
+
+    # 2. Panggil dengan stok NEGATIF (RAISE EXCEPTION P0001)
+    try:
+        cursor.execute("SELECT tambah_stok(1, -3);")
+        cursor.fetchone()
+        conn.commit()
+    except psycopg2.errors.RaiseException as e:
+        conn.rollback()
+        print(f"Output 2 (RAISE EXCEPTION): [{type(e).__name__}] {e.pgcode} - {e.pgerror.strip()}")
+
+    # 3. Panggil update harga dengan nilai NOL (RAISE EXCEPTION P0002)
+    try:
+        cursor.execute("SELECT update_harga(1, 0);")
+        cursor.fetchone()
+        conn.commit()
+    except psycopg2.errors.RaiseException as e:
+        conn.rollback()
+        print(f"Output 3 (Harga nol)     : [{type(e).__name__}] {e.pgcode} - {e.pgerror.strip()}\n")
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS tambah_stok(INT, INT);")
+    cursor.execute("DROP FUNCTION IF EXISTS update_harga(INT, BIGINT);")
+    cursor.execute("DROP TABLE IF EXISTS stok_barang CASCADE;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi RAISE EXCEPTION.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 38. RAISE NOTICE DALAM FUNCTION (PESAN INFORMASI / DEBUG)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# RAISE NOTICE adalah perintah PL/pgSQL untuk mengirimkan pesan informasi atau
+# pesan debug selama function berjalan, TANPA menghentikan eksekusi function.
+# Pesan ini dikirim ke klien (aplikasi Python / psql) sebagai "notice".
+#
+# PERBEDAAN LEVEL RAISE:
+# | Level      | Menghentikan Eksekusi? | Tujuan                                      |
+# |------------|------------------------|---------------------------------------------|
+# | DEBUG      | Tidak                  | Info debugging detail (level terendah)      |
+# | LOG        | Tidak                  | Dicatat di log server PostgreSQL             |
+# | INFO       | Tidak                  | Informasi umum                              |
+# | NOTICE     | Tidak                  | Pesan info untuk klien (paling umum)        |
+# | WARNING    | Tidak                  | Peringatan (dibahas di materi 39)           |
+# | EXCEPTION  | Ya (melempar error)    | Error fatal (dibahas di materi 37)         |
+#
+# CARA MENANGKAP RAISE NOTICE DI PYTHON (psycopg2):
+# Pesan NOTICE dari PostgreSQL bisa ditangkap melalui callback:
+#   conn.notices      --> List berisi semua pesan notice yang diterima koneksi
+#
+# FUNGSI:
+# - Melacak langkah-langkah eksekusi function layaknya print() di Python (untuk debug).
+# - Memberikan umpan balik proses ke developer tanpa mengganggu alur normal.
+# - Sangat berguna saat men-debug function yang kompleks atau looping.
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Function selesai, hasil: Total harga 3 produk = 28100000
+# Notice diterima: NOTICE:  [MULAI] Menghitung total harga untuk kategori: Elektronik
+# Notice diterima: NOTICE:  [PROSES] Ditemukan 2 baris untuk kategori 'Elektronik'
+# Notice diterima: NOTICE:  [SELESAI] Total harga = 28100000
+
+print("--- 38. RAISE NOTICE DALAM FUNCTION ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Buat tabel untuk contoh
+    cursor.execute("DROP TABLE IF EXISTS katalog_produk CASCADE;")
+    cursor.execute("""
+        CREATE TABLE katalog_produk (
+            id       SERIAL PRIMARY KEY,
+            nama     VARCHAR(100),
+            kategori VARCHAR(50),
+            harga    BIGINT
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO katalog_produk (nama, kategori, harga) VALUES
+        ('Laptop Pro', 'Elektronik', 18000000),
+        ('Smartwatch', 'Elektronik', 3500000),
+        ('Meja Kerja', 'Furnitur', 2500000),
+        ('Kursi Ergonomis', 'Furnitur', 1800000),
+        ('Headset Gaming', 'Elektronik', 600000);
+    """)
+    conn.commit()
+
+    # Function yang menggunakan RAISE NOTICE untuk logging langkah-langkah
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION hitung_total_harga(p_kategori VARCHAR)
+        RETURNS BIGINT AS $$
+        DECLARE
+            v_total  BIGINT := 0;
+            v_jumlah INT := 0;
+        BEGIN
+            RAISE NOTICE '[MULAI] Menghitung total harga untuk kategori: %', p_kategori;
+
+            SELECT COUNT(*), COALESCE(SUM(harga), 0)
+            INTO v_jumlah, v_total
+            FROM katalog_produk
+            WHERE kategori = p_kategori;
+
+            RAISE NOTICE '[PROSES] Ditemukan % baris untuk kategori ''%''', v_jumlah, p_kategori;
+
+            IF v_jumlah = 0 THEN
+                RAISE NOTICE '[INFO] Tidak ada produk dalam kategori ''%''. Mengembalikan 0.', p_kategori;
+                RETURN 0;
+            END IF;
+
+            RAISE NOTICE '[SELESAI] Total harga = %', v_total;
+            RETURN v_total;
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+    conn.commit()
+
+    # Panggil function (koneksi akan mengumpulkan notice di conn.notices)
+    cursor.execute("SELECT hitung_total_harga('Elektronik');")
+    hasil = cursor.fetchone()[0]
+    print(f"Output: Function selesai, hasil: Total harga produk Elektronik = {hasil:,}")
+
+    # Ambil semua pesan NOTICE yang tertangkap oleh psycopg2
+    print("\nPesan NOTICE yang diterima dari PostgreSQL:")
+    if conn.notices:
+        for notice in conn.notices:
+            print(f"  {notice.strip()}")
+    else:
+        print("  (Tidak ada notice tertangkap - mungkin perlu konfigurasi client_min_messages)")
+
+    # Reset notices, panggil lagi untuk kategori yang tidak ada
+    conn.notices.clear()
+    cursor.execute("SELECT hitung_total_harga('Makanan');")
+    hasil_kosong = cursor.fetchone()[0]
+    print(f"\nOutput (kategori tidak ada): Total = {hasil_kosong}")
+    print("Pesan NOTICE (kategori tidak ada):")
+    for notice in conn.notices:
+        print(f"  {notice.strip()}")
+
+    print()
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS hitung_total_harga(VARCHAR);")
+    cursor.execute("DROP TABLE IF EXISTS katalog_produk CASCADE;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi RAISE NOTICE.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 39. RAISE WARNING DALAM FUNCTION (PESAN PERINGATAN)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# RAISE WARNING adalah perintah PL/pgSQL untuk mengirimkan pesan PERINGATAN
+# ke klien saat function berjalan. Seperti RAISE NOTICE, ia TIDAK menghentikan
+# eksekusi function. Namun, tingkat keparahannya (severity) lebih tinggi dari NOTICE,
+# menandakan ada kondisi yang perlu diperhatikan meski bukan error fatal.
+#
+# PERBEDAAN NOTICE vs WARNING:
+# | Aspek          | RAISE NOTICE                      | RAISE WARNING                      |
+# |----------------|-----------------------------------|------------------------------------|
+# | Severity       | NOTICE (informatif)               | WARNING (peringatan serius)        |
+# | Menghentikan?  | Tidak                             | Tidak                              |
+# | Tujuan         | Info proses / debug biasa         | Kondisi berisiko / anomali data    |
+# | Dicatat di log?| Tergantung log_min_messages       | Biasanya selalu dicatat di log     |
+# | Contoh penggunaan| "Memulai proses X..."          | "Stok hampir habis!"               |
+#
+# KAPAN MENGGUNAKAN WARNING:
+# - Stok barang mendekati batas minimum (hampir habis).
+# - Input data valid tapi di luar rentang yang direkomendasikan.
+# - Proses berjalan tapi ada kondisi yang tidak ideal (misal: data duplikat ditemukan).
+# - Memanggil function yang deprecated (akan dihapus di versi mendatang).
+#
+# CARA MENANGKAP NOTICE & WARNING DI PYTHON:
+# Baik NOTICE maupun WARNING ditangkap di psycopg2 melalui: conn.notices
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Stok berhasil diperbarui, ID=1, Stok baru=8
+# WARNING tertangkap: WARNING:  PERINGATAN: Stok 'Laptop' tersisa 8 unit (di bawah ambang batas 10)!
+
+print("--- 39. RAISE WARNING DALAM FUNCTION ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # Buat tabel inventaris untuk contoh warning
+    cursor.execute("DROP TABLE IF EXISTS inventaris_gudang CASCADE;")
+    cursor.execute("""
+        CREATE TABLE inventaris_gudang (
+            id          SERIAL PRIMARY KEY,
+            nama_barang VARCHAR(100) NOT NULL,
+            stok        INT NOT NULL DEFAULT 0,
+            stok_minimum INT NOT NULL DEFAULT 10
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO inventaris_gudang (nama_barang, stok, stok_minimum) VALUES
+        ('Laptop', 12, 10),
+        ('Mouse', 5, 10),
+        ('Monitor', 3, 5);
+    """)
+    conn.commit()
+
+    # Function dengan RAISE WARNING: memperingatkan jika stok mendekati/di bawah minimum
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION kurangi_stok(p_id INT, p_kurang INT)
+        RETURNS TEXT AS $$
+        DECLARE
+            v_nama      inventaris_gudang.nama_barang%TYPE;
+            v_stok      inventaris_gudang.stok%TYPE;
+            v_stok_min  inventaris_gudang.stok_minimum%TYPE;
+            v_stok_baru INT;
+        BEGIN
+            -- Validasi: jumlah pengurangan harus positif
+            IF p_kurang <= 0 THEN
+                RAISE EXCEPTION 'Jumlah pengurangan harus lebih dari 0! Nilai: %', p_kurang
+                    USING ERRCODE = 'P0001';
+            END IF;
+
+            -- Ambil data barang
+            SELECT nama_barang, stok, stok_minimum
+            INTO STRICT v_nama, v_stok, v_stok_min
+            FROM inventaris_gudang WHERE id = p_id;
+
+            -- Validasi: stok tidak boleh menjadi negatif
+            IF (v_stok - p_kurang) < 0 THEN
+                RAISE EXCEPTION 'Stok tidak mencukupi! Stok tersedia: %, diminta: %', v_stok, p_kurang
+                    USING ERRCODE = 'P0002',
+                          HINT = 'Kurangi jumlah permintaan atau tunggu pengisian stok.';
+            END IF;
+
+            v_stok_baru := v_stok - p_kurang;
+
+            -- Update stok
+            UPDATE inventaris_gudang SET stok = v_stok_baru WHERE id = p_id;
+
+            -- RAISE WARNING jika stok baru di bawah atau sama dengan minimum
+            IF v_stok_baru <= v_stok_min THEN
+                RAISE WARNING 'PERINGATAN: Stok ''%'' tersisa % unit (di bawah ambang batas %)!',
+                    v_nama, v_stok_baru, v_stok_min;
+            END IF;
+
+            -- RAISE NOTICE sebagai info proses normal
+            RAISE NOTICE 'Stok ''%'' berhasil dikurangi % unit. Sisa: % unit.', v_nama, p_kurang, v_stok_baru;
+
+            RETURN 'Stok berhasil diperbarui, ID=' || p_id || ', Stok baru=' || v_stok_baru;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE EXCEPTION 'Barang dengan ID % tidak ditemukan!', p_id
+                    USING ERRCODE = 'P0003';
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+    conn.commit()
+
+    # 1. Kurangi stok Laptop: 12 - 4 = 8 (di bawah minimum 10 -> WARNING)
+    conn.notices.clear()
+    cursor.execute("SELECT kurangi_stok(1, 4);")
+    hasil = cursor.fetchone()[0]
+    conn.commit()
+    print(f"Output 1 (WARNING aktif) : {hasil}")
+    print("Pesan dari PostgreSQL (Notice/Warning):")
+    for notice in conn.notices:
+        print(f"  {notice.strip()}")
+
+    print()
+
+    # 2. Kurangi stok Monitor: 3 - 1 = 2 (di bawah minimum 5 -> WARNING)
+    conn.notices.clear()
+    cursor.execute("SELECT kurangi_stok(3, 1);")
+    hasil2 = cursor.fetchone()[0]
+    conn.commit()
+    print(f"Output 2 (WARNING aktif) : {hasil2}")
+    print("Pesan dari PostgreSQL:")
+    for notice in conn.notices:
+        print(f"  {notice.strip()}")
+
+    print()
+
+    # 3. Kurangi stok melebihi ketersediaan -> RAISE EXCEPTION
+    try:
+        cursor.execute("SELECT kurangi_stok(2, 100);")
+        cursor.fetchone()
+        conn.commit()
+    except psycopg2.errors.RaiseException as e:
+        conn.rollback()
+        print(f"Output 3 (Stok tidak cukup): [{e.pgcode}] {e.pgerror.strip()}\n")
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS kurangi_stok(INT, INT);")
+    cursor.execute("DROP TABLE IF EXISTS inventaris_gudang CASCADE;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi RAISE WARNING.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
