@@ -3172,3 +3172,487 @@ finally:
     if conn:
         conn.close()
 
+
+# ------------------------------------------------------------------------------
+# 40. RETURN QUERY DALAM FUNCTION (MENGEMBALIKAN BANYAK BARIS / RESULT SET)
+# ------------------------------------------------------------------------------
+# APA ITU:
+# RETURN QUERY adalah perintah khusus di dalam sebuah fungsi PL/pgSQL yang bersifat
+# set-returning (RETURNS SETOF ... atau RETURNS TABLE ...). Perintah ini digunakan
+# untuk mengirimkan (meneruskan) hasil dari sebuah query SELECT sebagai bagian dari
+# nilai kembalian fungsi tersebut.
+#
+# BEDANYA DENGAN RETURN BIASA:
+# - RETURN nilai      : Mengembalikan SATU nilai saja dan langsung menghentikan fungsi.
+# - RETURN QUERY      : Menambahkan seluruh baris hasil query ke dalam "result set"
+#                       yang sedang dibangun, lalu MELANJUTKAN eksekusi kode berikutnya
+#                       (tidak berhenti). Fungsi baru berhenti ketika mencapai akhir blok
+#                       BEGIN/END atau perintah RETURN; (tanpa nilai) yang eksplisit.
+#
+# KAPAN DIGUNAKAN:
+# Ketika kita ingin membuat fungsi yang mengembalikan BANYAK BARIS (seperti sebuah
+# tabel virtual atau view yang bisa menerima parameter). Sangat berguna untuk
+# memisahkan logika query yang kompleks agar dapat di-reuse.
+#
+# POLA UMUM:
+#   CREATE OR REPLACE FUNCTION nama_fungsi(param tipe)
+#   RETURNS TABLE (kolom1 tipe1, kolom2 tipe2, ...)
+#   LANGUAGE plpgsql AS $$
+#   BEGIN
+#       RETURN QUERY SELECT ... FROM tabel WHERE ...;
+#       -- bisa ada RETURN QUERY lagi untuk menggabungkan lebih banyak baris
+#   END;
+#   $$;
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Berhasil membuat tabel dan function get_karyawan_by_dept
+# Output: Karyawan IT -> ID: 1, Nama: Alice, Dept: IT, Gaji: 8.500.000
+# Output: Karyawan IT -> ID: 2, Nama: Bob, Dept: IT, Gaji: 7.800.000
+# Output: Karyawan gaji tinggi -> Nama: Diana, Dept: Finance, Gaji: 9.200.000
+# Output: Finance (order gaji desc) -> Nama: Diana, Gaji: 9.200.000
+# Output: Gabungan IT + HR (5 baris)
+
+print("--- 40. RETURN QUERY DALAM FUNCTION ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # --- Persiapan: Buat tabel dan isi data ---
+    cursor.execute("DROP TABLE IF EXISTS karyawan_rq CASCADE;")
+    cursor.execute("""
+        CREATE TABLE karyawan_rq (
+            id      SERIAL PRIMARY KEY,
+            nama    VARCHAR(50),
+            dept    VARCHAR(30),
+            gaji    NUMERIC(12, 2)
+        );
+    """)
+    cursor.executemany(
+        "INSERT INTO karyawan_rq (nama, dept, gaji) VALUES (%s, %s, %s);",
+        [
+            ("Alice",   "IT",      8500000),
+            ("Bob",     "IT",      7800000),
+            ("Charlie", "HR",      6500000),
+            ("Diana",   "Finance", 9200000),
+            ("Eve",     "HR",      7100000),
+            ("Frank",   "IT",      5500000),
+            ("Grace",   "Finance", 6800000),
+        ]
+    )
+    conn.commit()
+    print("Output: Berhasil membuat tabel karyawan_rq dan mengisi 7 baris data")
+
+    # ===========================================================================
+    # CONTOH 1: RETURN QUERY Sederhana (Filter by Departemen)
+    # ===========================================================================
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION get_karyawan_by_dept(p_dept VARCHAR)
+        RETURNS TABLE (
+            id_kar  INT,
+            nama    VARCHAR,
+            dept    VARCHAR,
+            gaji    NUMERIC
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            -- RETURN QUERY: Teruskan seluruh hasil query sebagai return value.
+            -- Eksekusi TIDAK berhenti di sini, baris kode selanjutnya tetap dijalankan.
+            RETURN QUERY
+                SELECT k.id, k.nama, k.dept, k.gaji
+                FROM karyawan_rq k
+                WHERE k.dept = p_dept
+                ORDER BY k.gaji DESC;
+        END;
+        $$;
+    """)
+    conn.commit()
+    print("Output: Function get_karyawan_by_dept berhasil dibuat")
+
+    cursor.execute("SELECT * FROM get_karyawan_by_dept('IT');")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"Output: Karyawan IT -> ID: {row[0]}, Nama: {row[1]}, Dept: {row[2]}, Gaji: {row[3]:,.0f}")
+
+    # ===========================================================================
+    # CONTOH 2: RETURN QUERY dengan Filter Gaji Minimum
+    # ===========================================================================
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION get_karyawan_gaji_tinggi(p_min_gaji NUMERIC)
+        RETURNS TABLE (
+            id_kar  INT,
+            nama    VARCHAR,
+            dept    VARCHAR,
+            gaji    NUMERIC
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            RETURN QUERY
+                SELECT k.id, k.nama, k.dept, k.gaji
+                FROM karyawan_rq k
+                WHERE k.gaji >= p_min_gaji
+                ORDER BY k.gaji DESC;
+        END;
+        $$;
+    """)
+    conn.commit()
+    print("Output: Function get_karyawan_gaji_tinggi berhasil dibuat")
+
+    cursor.execute("SELECT * FROM get_karyawan_gaji_tinggi(8000000);")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"Output: Karyawan gaji tinggi -> Nama: {row[1]}, Dept: {row[2]}, Gaji: {row[3]:,.0f}")
+
+    # ===========================================================================
+    # CONTOH 3: RETURN QUERY EXECUTE (Query Dinamis)
+    # Berbeda dengan RETURN QUERY biasa, RETURN QUERY EXECUTE menerima string SQL
+    # yang dibangun secara dinamis — sangat berguna untuk query yang ORDER BY-nya
+    # atau tabel-nya bergantung pada parameter.
+    # ===========================================================================
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION get_karyawan_dinamis(p_dept VARCHAR, p_order_col VARCHAR)
+        RETURNS TABLE (
+            id_kar  INT,
+            nama    VARCHAR,
+            dept    VARCHAR,
+            gaji    NUMERIC
+        )
+        LANGUAGE plpgsql AS $$
+        DECLARE
+            v_sql TEXT;
+        BEGIN
+            -- format() membangun SQL dinamis dengan aman:
+            -- %L = string literal (dikutip otomatis, aman dari SQL injection)
+            -- %I = identifier (nama kolom/tabel, dikutip otomatis)
+            v_sql := format(
+                'SELECT k.id, k.nama, k.dept, k.gaji FROM karyawan_rq k WHERE k.dept = %L ORDER BY k.%I DESC',
+                p_dept, p_order_col
+            );
+
+            -- RETURN QUERY EXECUTE: Eksekusi string SQL dinamis, hasilnya jadi return value
+            RETURN QUERY EXECUTE v_sql;
+        END;
+        $$;
+    """)
+    conn.commit()
+    print("Output: Function get_karyawan_dinamis (RETURN QUERY EXECUTE) berhasil dibuat")
+
+    cursor.execute("SELECT * FROM get_karyawan_dinamis('Finance', 'gaji');")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"Output: Finance (order gaji desc) -> Nama: {row[1]}, Gaji: {row[3]:,.0f}")
+
+    # ===========================================================================
+    # CONTOH 4: Beberapa RETURN QUERY dalam satu fungsi (Menggabungkan result set)
+    # Kedua RETURN QUERY dieksekusi berurutan dan hasilnya digabungkan (seperti UNION ALL)
+    # ===========================================================================
+    cursor.execute("""
+        CREATE OR REPLACE FUNCTION get_karyawan_multi_dept(p_dept1 VARCHAR, p_dept2 VARCHAR)
+        RETURNS TABLE (
+            id_kar  INT,
+            nama    VARCHAR,
+            dept    VARCHAR,
+            gaji    NUMERIC
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            -- RETURN QUERY #1: Ambil data dept1
+            RETURN QUERY
+                SELECT k.id, k.nama, k.dept, k.gaji
+                FROM karyawan_rq k
+                WHERE k.dept = p_dept1
+                ORDER BY k.nama;
+
+            -- Eksekusi LANJUT ke sini setelah RETURN QUERY #1 selesai
+            -- RETURN QUERY #2: Tambahkan data dept2 ke result set
+            RETURN QUERY
+                SELECT k.id, k.nama, k.dept, k.gaji
+                FROM karyawan_rq k
+                WHERE k.dept = p_dept2
+                ORDER BY k.nama;
+
+            -- Fungsi berakhir di sini secara implisit (sama dengan RETURN;)
+        END;
+        $$;
+    """)
+    conn.commit()
+    print("Output: Function get_karyawan_multi_dept (multiple RETURN QUERY) berhasil dibuat")
+
+    cursor.execute("SELECT * FROM get_karyawan_multi_dept('IT', 'HR');")
+    rows = cursor.fetchall()
+    print(f"Output: Gabungan IT + HR ({len(rows)} baris):")
+    for row in rows:
+        print(f"  -> Nama: {row[1]}, Dept: {row[2]}, Gaji: {row[3]:,.0f}")
+
+    print()
+
+    # Cleanup
+    cursor.execute("DROP FUNCTION IF EXISTS get_karyawan_by_dept(VARCHAR);")
+    cursor.execute("DROP FUNCTION IF EXISTS get_karyawan_gaji_tinggi(NUMERIC);")
+    cursor.execute("DROP FUNCTION IF EXISTS get_karyawan_dinamis(VARCHAR, VARCHAR);")
+    cursor.execute("DROP FUNCTION IF EXISTS get_karyawan_multi_dept(VARCHAR, VARCHAR);")
+    cursor.execute("DROP TABLE IF EXISTS karyawan_rq CASCADE;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi RETURN QUERY.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
+
+
+# ------------------------------------------------------------------------------
+# 41. NEXTVAL & SEQUENCE (NILAI BERIKUTNYA DARI URUTAN ANGKA OTOMATIS)
+# ------------------------------------------------------------------------------
+# APA ITU SEQUENCE:
+# Sequence adalah objek database PostgreSQL yang menghasilkan rangkaian angka
+# unik secara otomatis dan berurutan (1, 2, 3, ...). Ini adalah mekanisme di balik
+# SERIAL dan IDENTITY — keduanya membuat sequence secara implisit.
+#
+# KARAKTERISTIK PENTING — SEQUENCE TIDAK TERIKAT TRANSAKSI:
+# Sekali nilai diambil dengan nextval(), nilai itu TIDAK AKAN KEMBALI meskipun
+# transaksinya di-ROLLBACK. Ini disebut "sequence gap" dan merupakan perilaku
+# yang disengaja untuk memastikan performa dan keunikan nilai.
+#
+# FUNGSI-FUNGSI SEQUENCE UTAMA:
+# 1. nextval('nama_seq') : Ambil nilai BERIKUTNYA (angka bertambah), tidak bisa diulang.
+# 2. currval('nama_seq') : Ambil nilai TERAKHIR yang dihasilkan nextval di SESI INI.
+#                          Error jika nextval belum pernah dipanggil di sesi ini.
+# 3. lastval()           : Seperti currval(), tapi untuk sequence apapun yang terakhir
+#                          dipanggil nextval-nya (tanpa perlu menyebut nama sequence).
+# 4. setval('nama_seq', n)      : Atur paksa nilai sequence ke n. nextval() berikutnya = n+1.
+# 5. setval('nama_seq', n, false): Atur paksa ke n, nextval() berikutnya = n (bukan n+1).
+#
+# OPSI CREATE SEQUENCE:
+# - START WITH n   : Nilai awal (default: 1)
+# - INCREMENT BY n : Kenaikan per langkah (default: 1; nilai negatif = descending)
+# - MINVALUE n     : Nilai minimum (default: 1 untuk ascending)
+# - MAXVALUE n     : Nilai maksimum (default: sangat besar)
+# - CYCLE          : Jika mencapai MAXVALUE, kembali ke MINVALUE (mengulang)
+# - NO CYCLE       : Jika mencapai batas, error (default)
+# - CACHE n        : Pre-alokasi n nilai di memori untuk performa (default: 1)
+#
+# KEMUNGKINAN OUTPUT (Jika Berhasil):
+# Output: Sequence 'seq_contoh' berhasil dibuat (START 1, INCREMENT 1)
+# Output: nextval ke-1 = 1
+# Output: nextval ke-2 = 2
+# Output: nextval ke-3 = 3
+# Output: currval (nilai terakhir sesi ini) = 3
+# Output: lastval() = 3
+# Output: nextval setelah setval(10) = 11
+# Output: Demonstrasi Sequence Gap saat ROLLBACK
+# Output: 7 nextval berturut-turut dari CYCLE seq = [1, 2, 3, 4, 5, 1, 2]
+
+print("--- 41. NEXTVAL & SEQUENCE ---")
+conn = None
+try:
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # ===========================================================================
+    # CONTOH 1: Membuat Sequence & Menggunakan nextval / currval / lastval / setval
+    # ===========================================================================
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_contoh;")
+    cursor.execute("""
+        CREATE SEQUENCE seq_contoh
+            START WITH 1
+            INCREMENT BY 1
+            MINVALUE 1
+            NO MAXVALUE
+            NO CYCLE;
+    """)
+    conn.commit()
+    print("Output: Sequence 'seq_contoh' berhasil dibuat (START 1, INCREMENT 1)")
+
+    # nextval: mengambil nilai berikutnya (nilai sequence langsung bertambah)
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val1 = cursor.fetchone()[0]
+    print(f"Output: nextval ke-1 = {val1}")
+
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val2 = cursor.fetchone()[0]
+    print(f"Output: nextval ke-2 = {val2}")
+
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val3 = cursor.fetchone()[0]
+    print(f"Output: nextval ke-3 = {val3}")
+
+    # currval: kembalikan nilai TERAKHIR yang dihasilkan nextval di sesi ini
+    cursor.execute("SELECT currval('seq_contoh');")
+    curr = cursor.fetchone()[0]
+    print(f"Output: currval (nilai terakhir sesi ini) = {curr}")
+
+    # lastval: seperti currval, tanpa perlu menyebutkan nama sequence
+    cursor.execute("SELECT lastval();")
+    last = cursor.fetchone()[0]
+    print(f"Output: lastval() = {last}")
+
+    # setval: atur paksa nilai; nextval berikutnya = n+1
+    cursor.execute("SELECT setval('seq_contoh', 10);")
+    conn.commit()
+    print("Output: setval('seq_contoh', 10) -> nextval berikutnya akan = 11")
+
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val_setval = cursor.fetchone()[0]
+    print(f"Output: nextval setelah setval(10) = {val_setval}  (harusnya 11)")
+
+    # setval dengan is_called=false: nextval berikutnya = n (bukan n+1)
+    cursor.execute("SELECT setval('seq_contoh', 20, false);")
+    conn.commit()
+    print("Output: setval('seq_contoh', 20, false) -> nextval berikutnya akan = 20")
+
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val_setval_false = cursor.fetchone()[0]
+    print(f"Output: nextval setelah setval(20, false) = {val_setval_false}  (harusnya 20)")
+
+    # ===========================================================================
+    # CONTOH 2: Demonstrasi SEQUENCE GAP saat ROLLBACK
+    # Penting: sequence maju MESKIPUN transaksi dibatalkan!
+    # ===========================================================================
+    print("\nOutput: --- Demonstrasi Sequence Gap saat ROLLBACK ---")
+
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val_sebelum = cursor.fetchone()[0]
+    print(f"Output: nextval di dalam transaksi (sebelum rollback) = {val_sebelum}")
+
+    conn.rollback()  # Batalkan transaksi!
+    print("Output: Transaksi di-ROLLBACK!")
+
+    # Nilai sequence tidak kembali ke val_sebelum, tapi terus maju
+    cursor.execute("SELECT nextval('seq_contoh');")
+    val_setelah = cursor.fetchone()[0]
+    print(f"Output: nextval setelah rollback = {val_setelah}  (gap! nilai tidak mundur)")
+    print("Penjelasan: Sequence dirancang untuk KECEPATAN, bukan ketiadaan gap.")
+    print("           Gap pada sequence adalah normal dan bukan bug.")
+    conn.commit()
+
+    # ===========================================================================
+    # CONTOH 3: Sequence CYCLE (Mengulang dari Awal setelah Mencapai MAXVALUE)
+    # ===========================================================================
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_cycle_contoh;")
+    cursor.execute("""
+        CREATE SEQUENCE seq_cycle_contoh
+            START WITH 1
+            INCREMENT BY 1
+            MINVALUE 1
+            MAXVALUE 5
+            CYCLE;          -- Setelah angka 5, kembali ke MINVALUE (1)
+    """)
+    conn.commit()
+    print("\nOutput: Sequence CYCLE dibuat (MAX=5, CYCLE ke MINVALUE=1)")
+
+    nilai_cycle = []
+    for _ in range(7):  # Ambil 7 nilai -> harus ada yang mengulang
+        cursor.execute("SELECT nextval('seq_cycle_contoh');")
+        nilai_cycle.append(cursor.fetchone()[0])
+    conn.commit()
+    print(f"Output: 7 nextval berturut-turut = {nilai_cycle}")
+    print("Penjelasan: Setelah nilai 5, sequence kembali ke 1 karena CYCLE")
+
+    # ===========================================================================
+    # CONTOH 4: Sequence Descending (INCREMENT BY negatif)
+    # ===========================================================================
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_turun;")
+    cursor.execute("""
+        CREATE SEQUENCE seq_turun
+            START WITH 100
+            INCREMENT BY -10
+            MINVALUE 50
+            MAXVALUE 100
+            NO CYCLE;
+    """)
+    conn.commit()
+    print("\nOutput: Sequence turun dibuat (START=100, INCREMENT=-10, MIN=50)")
+
+    nilai_turun = []
+    for _ in range(7):
+        try:
+            cursor.execute("SELECT nextval('seq_turun');")
+            nilai_turun.append(cursor.fetchone()[0])
+            conn.commit()
+        except psycopg2.Error:
+            conn.rollback()
+            nilai_turun.append("(batas min tercapai)")
+            break
+    print(f"Output: nextval sequence turun = {nilai_turun}")
+
+    # ===========================================================================
+    # CONTOH 5: Menggunakan Sequence sebagai DEFAULT nilai kolom (cara manual SERIAL)
+    # SERIAL sebenarnya hanya shorthand untuk: buat sequence + set sebagai DEFAULT.
+    # ===========================================================================
+    cursor.execute("DROP TABLE IF EXISTS produk_seq_manual CASCADE;")
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_produk_id;")
+    cursor.execute("""
+        CREATE SEQUENCE seq_produk_id
+            START WITH 1
+            INCREMENT BY 1;
+    """)
+    cursor.execute("""
+        CREATE TABLE produk_seq_manual (
+            id      INT DEFAULT nextval('seq_produk_id') PRIMARY KEY,
+            nama    VARCHAR(50),
+            harga   NUMERIC(12,2)
+        );
+    """)
+    # OWNED BY: mengikat sequence ke kolom tabel (akan ikut terhapus jika tabel di-DROP)
+    cursor.execute("ALTER SEQUENCE seq_produk_id OWNED BY produk_seq_manual.id;")
+    conn.commit()
+    print("\nOutput: Tabel produk_seq_manual dengan sequence manual berhasil dibuat")
+
+    cursor.executemany(
+        "INSERT INTO produk_seq_manual (nama, harga) VALUES (%s, %s);",
+        [("Laptop", 15000000), ("Mouse", 250000), ("Monitor", 3500000)]
+    )
+    conn.commit()
+
+    cursor.execute("SELECT * FROM produk_seq_manual ORDER BY id;")
+    rows = cursor.fetchall()
+    print("Output: Isi tabel (ID diisi otomatis oleh sequence):")
+    for row in rows:
+        print(f"  -> ID: {row[0]}, Nama: {row[1]}, Harga: {row[2]:,.0f}")
+
+    # Melihat info detail sequence dari system catalog pg_sequence
+    cursor.execute("""
+        SELECT seqrelid::regclass AS nama_sequence,
+               seqstart           AS mulai_dari,
+               seqincrement       AS kenaikan,
+               seqmax             AS nilai_max,
+               seqmin             AS nilai_min,
+               seqcache           AS cache,
+               seqcycle           AS cycling
+        FROM pg_sequence
+        WHERE seqrelid = 'seq_produk_id'::regclass;
+    """)
+    info = cursor.fetchone()
+    if info:
+        print(f"\nOutput: Info 'seq_produk_id' dari pg_sequence:")
+        print(f"  Nama Sequence : {info[0]}")
+        print(f"  Mulai dari    : {info[1]}")
+        print(f"  Kenaikan      : {info[2]}")
+        print(f"  Nilai Max     : {info[3]}")
+        print(f"  Nilai Min     : {info[4]}")
+        print(f"  Cache         : {info[5]}")
+        print(f"  Cycle         : {info[6]}")
+
+    print()
+
+    # Cleanup
+    cursor.execute("DROP TABLE IF EXISTS produk_seq_manual CASCADE;")  # seq ikut terhapus (OWNED BY)
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_contoh;")
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_cycle_contoh;")
+    cursor.execute("DROP SEQUENCE IF EXISTS seq_turun;")
+    conn.commit()
+    cursor.close()
+    print("Output: Cleanup berhasil untuk materi NEXTVAL & SEQUENCE.\n")
+
+except Exception as e:
+    if conn:
+        conn.rollback()
+    print(f"Output Error: {e}\n")
+finally:
+    if conn:
+        conn.close()
