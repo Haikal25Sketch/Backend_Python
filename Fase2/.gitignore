@@ -1,0 +1,20 @@
+# Env files - jangan pernah dicommit!
+.env
+.env.local
+.env.production
+.env.staging
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
