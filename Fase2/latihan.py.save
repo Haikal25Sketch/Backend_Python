@@ -1,0 +1,79 @@
+from pydantic import BaseModel,Field,ValidationError,model_validator,ConfigDict
+
+class SameValueError(Exception):
+    pass
+
+class UserCreate(BaseModel):
+    nama:str
+    umur:int=Field(ge=18,le=50)
+    hobi:str|None=None
+    makanan_favorit:str|list[str]=None
+    partner:str
+
+    @model_validator(mode='before') #Validasi sebelum validasi
+    @classmethod
+    def check_before_validation(cls,data:dict):
+        if isinstance(data,dict):
+            if "nama" in data and isinstance(data["nama"],str):
+                data["nama"]= data["nama"].strip("&")
+            return data
+    @model_validator(mode='after') #Validasi setelah validasi
+    def check_after_validation(self):
+        if self.nama == self.partner:
+            raise SameValueError("Value tidak boleh sama")
+        return self
+
+
+User1 = UserCreate(nama='HuTao',umur=19,hobi='Mengubur orang',makanan_favorit=['Sushi','Yakiniku'],partner='Zhongli')
+
+print (f"Isi User1 = \n{User1}")
+print (f"Dict User1 = \n{User1.model_dump()}")
+print (f"String format json User1 = \n{User1.model_dump_json()}")
+
+MESSAGES_ERROR = {
+    ('nama','missing'):'Field wajib diisi',
+    ('nama','text_too_short'):'teks terlalu pendek',
+    ('nama','text_too_long'):'teks terlalu panjang'
+    }
+
+def format_validation_errors(error):
+    messages = []
+
+    for results in error.errors():
+        print (results)
+        key = (results['loc'],results['type'])
+
+        message = ERROR_MESSAGES.get(key,'Data tidak valid')
+
+        messages.append({'field':results['loc'],
+        'message':message}
+        )
+
+    response = {'errors':messages}
+
+    return response
+
+ERROR_MESSAGES = {
+    ('username', 'string_too_short'): 'Username minimal 3 karakter',
+    ('username', 'string_too_long'): 'Username maksimal 20 karakter',
+    ('umur', 'greater_than'): 'Umur harus lebih dari 18 tahun',
+    ('username', 'missing'): 'Username wajib diisi',
+    ('umur', 'missing'): 'Umur wajib diisi'
+}
+
+try:
+    data_user2={"nama":"Angela","umur":1,"hobi":"Support team","makanan_favorit":None,"partner":"Lancelot"}
+
+    User2= UserCreate.model_validate(data_user2)
+
+except ValidationError as error:
+    response = format_validation_errors(error)
+    print (response)
+
+print()
+
+try:
+    data_User3= {'nama':'Ganyu','umur':27,'hobi':'Memanah',"makanan_favorit":"Daging Kambing","partner":None}
+except ValidationError as error:
+    response = format_validation_errors(error)
+    print (response)
