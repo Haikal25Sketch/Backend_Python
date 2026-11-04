@@ -22,8 +22,18 @@
 # - Pydantic melakukan type coercion (konversi tipe) jika memungkinkan,
 #   contoh: "25" (string) bisa dikonversi ke int jika field bertipe int.
 
-from pydantic import BaseModel, Field, model_validator, ValidationError
-from typing import Optional
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    model_validator,
+    field_validator,
+    ValidationError,
+    AliasPath,
+    AliasChoices,
+)
+from typing import Optional, Any
+from enum import Enum
 
 
 # Contoh dasar BaseModel
@@ -36,6 +46,174 @@ class UserDasar(BaseModel):
 # user = UserDasar(nama="Budi", umur="25")  # "25" dikonversi ke int -> OK
 # user = UserDasar(nama=123, umur=25)        # 123 dikonversi ke str "123" -> OK
 # user = UserDasar(nama="Budi", umur="abc") # ERROR: "abc" tidak bisa jadi int
+
+
+# =============================================================================
+# PANDUAN LENGKAP PARAMETER ConfigDict (PYDANTIC V2) 📖
+# =============================================================================
+#
+# Konsep:
+# Di Pydantic V2, konfigurasi model tidak lagi memakai class Config: (seperti V1),
+# melainkan menggunakan atribut kelas:
+#     model_config = ConfigDict(...)
+#
+# DAFTAR PARAMETER ConfigDict & PENJELASANNYA:
+#
+# 1. extra ('ignore' | 'forbid' | 'allow')
+#    - Menentukan perlakuan terhadap field ekstra/tak terdaftar yang dikirimkan.
+#    - 'ignore' (default): field tambahan diabaikan tanpa error.
+#    - 'forbid': tolak dan lemparkan ValidationError jika ada field tambahan.
+#    - 'allow' : terima field tambahan dan simpan di model.model_extra.
+#
+# 2. str_strip_whitespace (bool, default False)
+#    - Jika True, otomatis memotong spasi depan/belakang (.strip()) pada SEMUA field string.
+#
+# 3. str_to_lower / str_to_upper (bool, default False)
+#    - Jika True, otomatis mengubah semua field string menjadi huruf kecil (lowercase)
+#      atau huruf besar (uppercase).
+#
+# 4. str_min_length / str_max_length (int, default None)
+#    - Menetapkan batas panjang minimum atau maksimum karakter secara global untuk semua field string.
+#
+# 5. strict (bool, default False)
+#    - Jika True, mematikan type coercion (konversi tipe otomatis) untuk seluruh field di model.
+#    - Contoh: nilai string "123" tidak akan dikonversi ke int, melainkan langsung error.
+#
+# 6. frozen (bool, default False)
+#    - Jika True, membuat instance model bersifat immutable (read-only setelah dibuat).
+#    - Model yang frozen juga otomatis hashable sehingga bisa dijadikan elemen set atau key dict.
+#
+# 7. validate_assignment (bool, default False)
+#    - Secara default, Pydantic hanya memvalidasi nilai saat model pertama kali diinisialisasi.
+#    - Jika True, validasi akan kembali dijalankan saat atribut diubah (misal: user.umur = -10).
+#
+# 8. populate_by_name (bool, default False)
+#    - Jika field memiliki alias (misal Field(alias="user_name")), secara default hanya
+#      bisa diisi via nama aliasnya.
+#    - Jika populate_by_name=True, field bisa diisi baik menggunakan nama alias ('user_name')
+#      maupun nama atribut Python aslinya ('username').
+#
+# 9. from_attributes (bool, default False) - [Pengganti orm_mode=True di V1]
+#    - Mengizinkan Pydantic membaca data dari atribut objek (obj.nama) bukan hanya dict (obj['nama']).
+#    - Sangat penting saat integrasi dengan ORM seperti SQLAlchemy, Django ORM, atau class Python biasa
+#      melalui Model.model_validate(obj_orm).
+#
+# 10. use_enum_values (bool, default False)
+#     - Jika True, model akan menyimpan nilai mentah (.value) dari Enum, bukan objek Enum itu sendiri.
+#
+# 11. validate_default (bool, default False)
+#     - Jika True, nilai default field juga akan divalidasi oleh validator saat inisialisasi.
+#
+# 12. arbitrary_types_allowed (bool, default False)
+#     - Mengizinkan field menggunakan tipe data/class kustom yang tidak memiliki validator bawaan Pydantic
+#       (misal koneksi database, class pihak ketiga, dll).
+#
+# 13. hide_input_in_errors (bool, default False)
+#     - Menyembunyikan input data asli dari pesan ValidationError.
+#     - Sangat penting untuk field sensitif seperti kata sandi, token API, atau data pribadi (PII).
+#
+# 14. loc_by_alias (bool, default True)
+#     - Menentukan penamaan field di dalam pesan error loc.
+#     - Jika True, menggunakan nama alias. Jika False, menggunakan nama atribut Python.
+#
+# 15. revalidate_instances ('always' | 'never' | 'subclass-instances', default 'never')
+#     - Mengatur apakah instance model yang sudah divalidasi akan divalidasi ulang jika
+#       dioper ke model lain.
+#
+# -----------------------------------------------------------------------------
+# CONTOH PENGGUNAAN PARAMETER ConfigDict:
+# -----------------------------------------------------------------------------
+
+# Contoh A: Pembersihan String Otomatis (str_strip_whitespace, str_to_lower)
+class ModelStringOtomatis(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, str_to_lower=True)
+    username: str
+    email: str
+
+# Contoh B: Proteksi Immutabilitas (frozen)
+class KoordinatImmutable(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    x: int
+    y: int
+
+# Contoh C: Validasi saat Modifikasi Nilai (validate_assignment)
+class RekeningBank(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+    saldo: int = Field(ge=0)
+
+# Contoh D: Fleksibilitas Input & ORM (populate_by_name & from_attributes)
+class UserORM(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    user_id: int = Field(alias="userId")
+    nama: str
+
+# Contoh E: Keamanan Data Sensitif (hide_input_in_errors)
+class AkunKeamanan(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+    password: str = Field(min_length=8)
+
+# Contoh F: Enum Value & Tipe Kustom (use_enum_values, arbitrary_types_allowed)
+class Level(str, Enum):
+    ADMIN = "admin"
+    GUEST = "guest"
+
+class DatabaseDummy:
+    """Kelas kustom non-Pydantic."""
+    def __init__(self, host: str):
+        self.host = host
+
+class KonfigurasiApp(BaseModel):
+    model_config = ConfigDict(
+        use_enum_values=True,
+        arbitrary_types_allowed=True
+    )
+    role: Level
+    koneksi_db: DatabaseDummy
+
+
+# =============================================================================
+# DEMO IMPLEMENTASI ConfigDict (Dapat Dijalankan)
+# =============================================================================
+print("\n=== DEMO ConfigDict: str_strip_whitespace & str_to_lower ===")
+data_user = ModelStringOtomatis(username="  BudiSantoso  ", email="  BUDI@EXAMPLE.COM  ")
+print(f"Hasil normalisasi -> username: '{data_user.username}', email: '{data_user.email}'")
+
+print("\n=== DEMO ConfigDict: frozen=True ===")
+titik = KoordinatImmutable(x=10, y=20)
+try:
+    titik.x = 99  # Mencoba mengubah nilai pada model frozen
+except ValidationError as exc:
+    print(f"Berhasil dicegah (Frozen): {exc.errors()[0]['type']}")
+
+print("\n=== DEMO ConfigDict: validate_assignment=True ===")
+akun = RekeningBank(saldo=100000)
+try:
+    akun.saldo = -50000  # Tidak lolos validasi ge=0 saat reassignment
+except ValidationError as exc:
+    print(f"Berhasil dicegah saat ubah nilai: {exc.errors()[0]['msg']}")
+
+print("\n=== DEMO ConfigDict: populate_by_name=True ===")
+# Bisa dibuat pakai alias ("userId") atau nama field asli ("user_id"):
+user1 = UserORM(userId=1, nama="Andi")
+user2 = UserORM(user_id=2, nama="Budi")
+print(f"Dari alias : {user1}")
+print(f"Dari field : {user2}")
+
+print("\n=== DEMO ConfigDict: hide_input_in_errors=True ===")
+try:
+    AkunKeamanan(password="123")  # Password terlalu pendek
+except ValidationError as exc:
+    # Pada str(exc), input_value dan input_type disembunyikan sehingga aman dari log/traceback:
+    print("Pesan ValidationError (tanpa input_value):")
+    print(str(exc))
+
+print("\n=== DEMO ConfigDict: use_enum_values & arbitrary_types_allowed ===")
+app_config = KonfigurasiApp(
+    role=Level.ADMIN,
+    koneksi_db=DatabaseDummy(host="localhost:5432")
+)
+print(f"Role (raw string): {app_config.role} (tipe: {type(app_config.role).__name__})")
+print(f"Arbitrary class host: {app_config.koneksi_db.host}")
 
 
 # =============================================================================
@@ -542,6 +720,559 @@ print(f"model_dump(): {obj_allow.model_dump()}")
 
 
 # =============================================================================
+# K. FIELD VALIDATOR (field_validator) ✅
+# =============================================================================
+#
+# Konsep:
+# - field_validator adalah decorator untuk validasi custom pada SATU field tertentu.
+# - Berbeda dengan Field() yang hanya bisa mengatur batasan bawaan Pydantic
+#   (min_length, gt, dll.), field_validator memungkinkan logika validasi BEBAS.
+# - Berguna saat perlu: format string, cek regex, konversi data, atau aturan
+#   bisnis sederhana yang spesifik untuk satu field.
+#
+# Sintaks dasar:
+#   @field_validator('nama_field')
+#   @classmethod
+#   def nama_validator(cls, value):
+#       # logika validasi...
+#       return value  # WAJIB kembalikan value jika valid
+#
+# Dua mode utama:
+#
+#   mode='before'
+#     -> Berjalan SEBELUM validasi tipe Pydantic.
+#     -> Menerima nilai mentah (raw input), cocok untuk normalisasi/konversi.
+#     -> Wajib kembalikan value yang sudah dimodifikasi.
+#
+#   mode='after'  (DEFAULT di Pydantic V2)
+#     -> Berjalan SETELAH validasi tipe Pydantic berhasil.
+#     -> Menerima nilai yang sudah dikonversi ke tipe yang benar.
+#     -> Wajib kembalikan value.
+#
+# ⚠️  PENTING:
+#     - Harus pakai @classmethod.
+#     - Jika validasi gagal, lempar ValueError -> Pydantic ubah jadi ValidationError.
+#     - Bisa memvalidasi beberapa field sekaligus: @field_validator('field1', 'field2')
+
+
+# --- Contoh 1: Normalisasi string (mode='before') ---
+# Gunakan mode='before' saat ingin mengubah/normalisasi nilai SEBELUM dicek tipenya.
+
+class UserBersih(BaseModel):
+    username: str = Field(min_length=3, max_length=20)
+    email: str
+
+    @field_validator('username', mode='before')
+    @classmethod
+    def bersihkan_username(cls, value):
+        """Hapus spasi di awal/akhir username sebelum validasi."""
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalisasi_email(cls, value):
+        """Trim spasi dan ubah email ke lowercase."""
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+
+print("\n=== field_validator mode='before': Normalisasi ===")
+user_bersih = UserBersih(username="  Budi  ", email="  BUDI@EXAMPLE.COM  ")
+print(f"Username : '{user_bersih.username}'")  # 'Budi' (spasi dihapus)
+print(f"Email    : '{user_bersih.email}'")     # 'budi@example.com'
+
+
+# --- Contoh 2: Validasi format (mode='after') ---
+# Gunakan mode='after' saat ingin memvalidasi nilai yang sudah bertipe benar.
+
+import re
+
+class UserTerdaftar(BaseModel):
+    username: str = Field(min_length=3, max_length=20)
+    email: str
+    no_hp: str
+
+    @field_validator('email', mode='after')
+    @classmethod
+    def validasi_email(cls, value):
+        """Pastikan email memiliki format yang benar (ada @ dan domain)."""
+        pola_email = r'^[\w\.-]+@[\w\.-]+\.\w{2,}$'
+        if not re.match(pola_email, value):
+            raise ValueError("Format email tidak valid.")
+        return value
+
+    @field_validator('no_hp', mode='after')
+    @classmethod
+    def validasi_no_hp(cls, value):
+        """Pastikan nomor HP hanya berisi angka dan dimulai dengan 08 atau +62."""
+        # Hapus spasi dan tanda hubung dulu
+        value = value.replace(" ", "").replace("-", "")
+        if not re.match(r'^(08|\+62)\d{8,11}$', value):
+            raise ValueError("Nomor HP tidak valid. Gunakan format 08xx atau +62xx.")
+        return value
+
+
+print("\n=== field_validator mode='after': Validasi Format ===")
+
+# Kasus 1: Semua valid -> OK
+try:
+    user_ok = UserTerdaftar(
+        username="budi123",
+        email="budi@example.com",
+        no_hp="08123456789"
+    )
+    print(f"Berhasil: {user_ok.username}, {user_ok.email}, {user_ok.no_hp}")
+except ValidationError as exc:
+    print(f"Error: {exc}")
+
+# Kasus 2: Email tidak valid -> ValidationError
+try:
+    UserTerdaftar(username="ani", email="bukan-email", no_hp="08123456789")
+except ValidationError as exc:
+    for err in exc.errors():
+        print(f"Error [{err['loc'][0]}]: {err['msg']}")
+
+# Kasus 3: Nomor HP tidak valid -> ValidationError
+try:
+    UserTerdaftar(username="cici", email="cici@mail.com", no_hp="12345")
+except ValidationError as exc:
+    for err in exc.errors():
+        print(f"Error [{err['loc'][0]}]: {err['msg']}")
+
+
+# --- Contoh 3: Memvalidasi beberapa field sekaligus ---
+# Satu validator bisa menangani beberapa field dengan menyebutkannya semua.
+
+class FormulirKontak(BaseModel):
+    nama_depan: str
+    nama_belakang: str
+
+    @field_validator('nama_depan', 'nama_belakang', mode='before')
+    @classmethod
+    def bersihkan_dan_kapitalisasi(cls, value):
+        """Trim spasi dan kapitalisasi setiap nama."""
+        if isinstance(value, str):
+            return value.strip().title()
+        return value
+
+
+print("\n=== field_validator untuk beberapa field ===")
+kontak = FormulirKontak(nama_depan="  budi  ", nama_belakang="  santoso  ")
+print(f"Nama lengkap: {kontak.nama_depan} {kontak.nama_belakang}")
+# Output: Nama lengkap: Budi Santoso
+
+
+# --- Perbandingan: kapan pakai Field() vs field_validator? ---
+#
+# Gunakan Field() ketika:
+#   - Batasan sederhana: panjang string, rentang angka (gt, lt, ge, le)
+#   - Aturan bawaan Pydantic sudah cukup
+#   Contoh: umur: int = Field(gt=0, lt=120)
+#
+# Gunakan field_validator ketika:
+#   - Perlu logika Python bebas (regex, konversi, kondisi kompleks)
+#   - Perlu normalisasi (strip, lowercase, title case, dll.)
+#   - Aturan bawaan Field() tidak cukup
+#   Contoh: validasi format email, nomor telepon, NIK, kode pos, dll.
+#
+# Kedua bisa DIKOMBINASIKAN pada field yang sama:
+#   email: str = Field(min_length=5)   <- cek panjang dulu via Field()
+#   @field_validator('email') ...      <- cek format via validator
+
+
+# =============================================================================
+# L. ALIAS ✅
+# =============================================================================
+#
+# Konsep:
+# - Alias adalah nama alternatif untuk sebuah field.
+# - Berguna ketika nama field di input/JSON berbeda dengan nama atribut Python
+#   (misalnya format camelCase dari API JavaScript ke snake_case di Python).
+#
+# Ada 3 jenis alias di Pydantic V2:
+#   1. validation_alias : nama alias saat validasi / deserialisasi (input)
+#   2. serialization_alias: nama alias saat dump / serialisasi (output)
+#   3. alias : mengatur validation_alias sekaligus serialization_alias
+#
+# Pengaturan penting:
+#   - Secara default jika alias diset, saat inisialisasi WAJIB menggunakan alias.
+#   - Gunakan ConfigDict(populate_by_name=True) agar field bisa diisi baik
+#     menggunakan nama field asli di Python maupun nama aliasnya!
+#   - Saat dump: model_dump(by_alias=True) untuk menggunakan alias pada output.
+
+class UserProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Menggunakan alias biasa (berlaku untuk input & output)
+    user_id: int = Field(alias="userId")
+    nama_lengkap: str = Field(alias="fullName")
+    # serialization_alias: saat validasi input pakai 'email_address', saat dump pakai 'email'
+    email_kontak: str = Field(validation_alias="email_address", serialization_alias="email")
+
+print("\n=== L. ALIAS ===")
+# 1. Inisialisasi menggunakan alias (misal data dari JSON API eksternal)
+data_eksternal = {
+    "userId": 101,
+    "fullName": "Ahmad Dani",
+    "email_address": "ahmad@example.com"
+}
+user1 = UserProfile.model_validate(data_eksternal)
+print("Model dari alias:", user1)
+print("Akses atribut Python:", user1.user_id, "|", user1.nama_lengkap)
+
+# 2. Karena populate_by_name=True, bisa juga pakai nama atribut Python langsung:
+user2 = UserProfile(user_id=102, nama_lengkap="Budi Santoso", email_address="budi@example.com")
+print("Model dari nama Python:", user2)
+
+# 3. Serialisasi / Dump:
+print("Dump default (nama atribut):", user1.model_dump())
+# Output: {'user_id': 101, 'nama_lengkap': 'Ahmad Dani', 'email_kontak': 'ahmad@example.com'}
+
+print("Dump by_alias=True (nama alias):", user1.model_dump(by_alias=True))
+# Output: {'userId': 101, 'fullName': 'Ahmad Dani', 'email': 'ahmad@example.com'}
+
+
+# =============================================================================
+# M. NESTED MODEL (MODEL DI DALAM MODEL) ✅
+# =============================================================================
+#
+# Konsep:
+# - Nested model adalah teknik menggunakan BaseModel lain sebagai tipe data suatu field.
+# - Pydantic secara rekursif memvalidasi model yang ada di dalamnya.
+# - Input bisa berupa dict biasa atau instance model yang sudah dibuat.
+# - Sangat berguna untuk data relasional, payload JSON bersarang, struktur objek kompleks.
+
+class Alamat(BaseModel):
+    jalan: str
+    kota: str
+    kode_pos: str = Field(min_length=5, max_length=5)
+
+class RekeningBank(BaseModel):
+    nomor_rekening: str = Field(min_length=10, max_length=16)
+    nama_bank: str
+
+class Nasabah(BaseModel):
+    id_nasabah: int
+    nama: str = Field(min_length=3)
+    # Nested model di dalam model
+    alamat: Alamat
+    rekening: RekeningBank
+
+print("\n=== M. NESTED MODEL ===")
+payload_nasabah = {
+    "id_nasabah": 1,
+    "nama": "Citra Lestari",
+    # Nested dict otomatis divalidasi dan diubah menjadi instance Alamat
+    "alamat": {
+        "jalan": "Jl. Sudirman Kav. 21",
+        "kota": "Jakarta Pusat",
+        "kode_pos": "10220"
+    },
+    # Nested dict kedua otomatis divalidasi menjadi instance RekeningBank
+    "rekening": {
+        "nomor_rekening": "123456789012",
+        "nama_bank": "BCA"
+    }
+}
+
+nasabah = Nasabah.model_validate(payload_nasabah)
+print("Data Nasabah:", nasabah)
+print("Akses nested field:", nasabah.alamat.kota, "| Bank:", nasabah.rekening.nama_bank)
+
+# Jika ada field nested yang tidak valid, error loc akan menunjukkan jalurnya:
+try:
+    Nasabah.model_validate({
+        "id_nasabah": 2,
+        "nama": "Doni",
+        "alamat": {"jalan": "Jl. Mawar", "kota": "Bandung", "kode_pos": "123"}, # kode_pos < 5
+        "rekening": {"nomor_rekening": "1234567890", "nama_bank": "Mandiri"}
+    })
+except ValidationError as exc:
+    print("Contoh loc error nested:")
+    for err in exc.errors():
+        # Loc akan berisi tuple seperti ('alamat', 'kode_pos')
+        print(f"  Field path: {err['loc']} -> {err['msg']}")
+
+
+# =============================================================================
+# N. ALIAS PATH & ALIAS CHOICES ✅
+# =============================================================================
+#
+# Konsep:
+# - AliasPath: Digunakan ketika kita ingin mengambil data dari JSON bersarang (nested)
+#   tetapi dimasukkan ke dalam field model yang FLAT (tanpa harus buat sub-model).
+# - AliasChoices: Menyediakan beberapa pilihan nama alias. Pydantic akan mengambil
+#   nilai dari pilihan pertama yang ditemukan di payload input.
+#
+# Sangat cocok untuk integrasi API pihak ketiga dengan payload berantakan/berubah-ubah.
+
+class DataPegawai(BaseModel):
+    # Mengambil nilai dari nested dict: input_data["perusahaan"]["divisi"]["nama"]
+    divisi: str = Field(validation_alias=AliasPath("perusahaan", "divisi", "nama"))
+
+    # Fleksibel: terima nama field 'hp', 'phone', atau 'no_telepon'
+    kontak: str = Field(validation_alias=AliasChoices("hp", "phone", "no_telepon"))
+
+print("\n=== N. ALIAS PATH & ALIAS CHOICES ===")
+
+# Contoh payload dari sistem eksternal
+data_karyawan_a = {
+    "perusahaan": {
+        "divisi": {
+            "nama": "Backend Engineering"
+        }
+    },
+    "phone": "081298765432"
+}
+
+pegawai_a = DataPegawai.model_validate(data_karyawan_a)
+print("Hasil AliasPath & AliasChoices:")
+print(f"  Divisi: {pegawai_a.divisi}")
+print(f"  Kontak: {pegawai_a.kontak}")
+
+# Payload lain dengan alias alternatif ('no_telepon'):
+data_karyawan_b = {
+    "perusahaan": {
+        "divisi": {
+            "nama": "Data Science"
+        }
+    },
+    "no_telepon": "082111223344"
+}
+pegawai_b = DataPegawai.model_validate(data_karyawan_b)
+print(f"Hasil payload alternatif -> Divisi: {pegawai_b.divisi}, Kontak: {pegawai_b.kontak}")
+
+
+# =============================================================================
+# O. STRICT MODE (strict=True) ✅
+# =============================================================================
+#
+# Konsep:
+# - Secara default, Pydantic sangat pemaaf dan melakukan TYPE COERCION:
+#   misal: string "123" otomatis jadi int 123, int 1 otomatis jadi bool True,
+#          float 42.0 otomatis jadi int 42.
+# - Kadang-kadang kita TIDAK INGIN konversi otomatis ini (misal validasi data finansial,
+#   token otentikasi, atau tipe data presisi).
+# - strict=True mematikan type coercion: tipe data HARUS persis sama!
+#
+# Penerapan:
+# 1. Per-field: Field(strict=True)
+# 2. Per-model: model_config = ConfigDict(strict=True)
+
+class PembayaranStrict(BaseModel):
+    # Field biasa (coercion diperbolehkan)
+    keterangan: str
+    
+    # Strict per-field: amount harus float/int asli, bukan string "50000"
+    amount: float = Field(strict=True, gt=0)
+    
+    # Strict per-field: status_sukses harus boolean murni (True/False), BUKAN 1, 0, atau "true"
+    status_sukses: bool = Field(strict=True)
+
+class TransaksiStrictTotal(BaseModel):
+    # Mengaktifkan strict mode untuk SELURUH model
+    model_config = ConfigDict(strict=True)
+
+    kode_trx: str
+    nominal: int
+    is_settled: bool
+
+print("\n=== O. STRICT MODE ===")
+
+# Kasus 1: Input tipe tepat -> Berhasil
+bayar_ok = PembayaranStrict(keterangan="Topup", amount=50000.0, status_sukses=True)
+print("Strict lolos:", bayar_ok)
+
+# Kasus 2: Coba lakukan coercion pada field strict -> ValidationError!
+try:
+    PembayaranStrict(
+        keterangan="Topup",
+        amount="50000.0",   # ERROR: string tidak akan di-coerce ke float
+        status_sukses=1     # ERROR: integer 1 tidak akan di-coerce ke bool
+    )
+except ValidationError as exc:
+    print("Contoh kegagalan Strict Mode:")
+    for err in exc.errors():
+        print(f"  Field {err['loc'][0]}: type={err['type']} | input={err['input']}")
+
+
+# =============================================================================
+# P. BASESETTINGS (pydantic-settings) ✅
+# =============================================================================
+#
+# Konsep:
+# - BaseSettings adalah kelas dari library tambahan `pydantic-settings` (install:
+#   pip install pydantic-settings) yang digunakan khusus untuk manajemen
+#   KONFIGURASI APLIKASI (bukan untuk validasi data request seperti BaseModel).
+# - BaseSettings secara otomatis membaca nilai dari:
+#     1. Environment variables (variabel lingkungan sistem)
+#     2. File .env (dengan SettingsConfigDict)
+#     3. Nilai default yang didefinisikan di kelas
+# - Cocok digunakan untuk: koneksi database, API key, secret key, host, port, dll.
+# - Menggunakan SettingsConfigDict (bukan ConfigDict) untuk konfigurasi khusus settings.
+#
+# Perbedaan BaseSettings vs BaseModel:
+# ┌─────────────────┬─────────────────────────────┬──────────────────────────────┐
+# │ Aspek           │ BaseModel                   │ BaseSettings                 │
+# ├─────────────────┼─────────────────────────────┼──────────────────────────────┤
+# │ Tujuan          │ Validasi data request/respon│ Konfigurasi aplikasi         │
+# │ Sumber data     │ Dict / JSON dari input user │ .env, env vars, secrets      │
+# │ Import dari     │ pydantic                    │ pydantic_settings            │
+# │ Konfigurasi     │ ConfigDict                  │ SettingsConfigDict           │
+# │ Contoh pakai    │ Request body API, form data │ DB_HOST, SECRET_KEY, PORT    │
+# └─────────────────┴─────────────────────────────┴──────────────────────────────┘
+#
+# Cara kerja prioritas nilai (dari tertinggi ke terendah):
+# 1. Init argument langsung: Settings(db_host="override")
+# 2. Environment variable di sistem: export DB_HOST=localhost
+# 3. File .env: DB_HOST=localhost
+# 4. Default value di kelas: db_host: str = "localhost"
+#
+# Instalasi:
+#   pip install pydantic-settings
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+print("\n=== P. BASESETTINGS ===")
+
+
+# --- Contoh 1: BaseSettings Dasar ---
+# Membaca dari environment variable atau .env
+
+class AppSettings(BaseSettings):
+    # Field tanpa default -> WAJIB ada di env atau .env, jika tidak ada -> Error
+    app_name: str
+    app_version: str
+
+    # Field dengan default -> Opsional, jika tidak ada di env -> pakai default
+    debug: bool = False
+    max_connections: int = 10
+
+    # SettingsConfigDict: Konfigurasi khusus BaseSettings
+    model_config = SettingsConfigDict(
+        env_file=".env",           # Path ke file .env (relatif dari direktori kerja)
+        env_file_encoding="utf-8", # Encoding file .env
+        case_sensitive=False,      # Env var tidak case-sensitive (APP_NAME == app_name)
+        extra="ignore",            # Abaikan variabel env yang tidak terdaftar
+    )
+
+
+# --- Contoh 2: Konfigurasi Database (Pola Umum di Project Nyata) ---
+# Seperti yang ada di wallet_api/config/settings.py
+
+class DatabaseSettings(BaseSettings):
+    db_host: str
+    db_port: int = 5432       # Default PostgreSQL port
+    db_user: str
+    db_password: str
+    db_name: str
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    # Method tambahan: menghasilkan DATABASE_URL untuk SQLAlchemy
+    def get_database_url(self) -> str:
+        return (
+            f"postgresql://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+
+# --- Contoh 3: env_prefix ---
+# env_prefix digunakan ketika semua variabel config di env/file .env
+# memiliki awalan (prefix) yang sama.
+# Contoh: semua env var diawali "APP_" -> APP_HOST, APP_PORT, APP_SECRET_KEY
+
+class ServerSettings(BaseSettings):
+    # Field di kelas menggunakan nama tanpa prefix
+    # Tapi env var-nya harus menggunakan prefix: APP_HOST, APP_PORT, dll.
+    host: str = "127.0.0.1"
+    port: int = 8000
+    secret_key: str = "default-secret"
+    reload: bool = False
+
+    model_config = SettingsConfigDict(
+        env_prefix="APP_",         # Semua env var harus diawali APP_
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+
+# --- Contoh 4: Memuat dan Menggunakan Settings ---
+# Pattern singleton yang umum dipakai di project FastAPI/Python nyata
+
+# Simulasi: Set environment variable secara langsung di Python (untuk demo)
+import os
+
+# Simulasikan isi .env untuk contoh di bawah
+os.environ["DB_HOST"] = "localhost"
+os.environ["DB_PORT"] = "5432"
+os.environ["DB_USER"] = "admin"
+os.environ["DB_PASSWORD"] = "supersecret"
+os.environ["DB_NAME"] = "mydb"
+
+# Instansiasi Settings (otomatis baca dari env / .env)
+db_settings = DatabaseSettings()
+
+print("Konfigurasi Database:")
+print(f"  Host     : {db_settings.db_host}")
+print(f"  Port     : {db_settings.db_port}")
+print(f"  User     : {db_settings.db_user}")
+print(f"  DB Name  : {db_settings.db_name}")
+print(f"  Password : {'*' * len(db_settings.db_password)}  (disembunyikan)")
+print(f"  DB URL   : {db_settings.get_database_url()}")
+
+# --- Contoh 5: Override nilai saat instansiasi (untuk testing) ---
+# Berguna saat unit testing agar tidak tergantung file .env asli
+
+db_test = DatabaseSettings(
+    db_host="test-db-host",
+    db_port=5433,
+    db_user="test_user",
+    db_password="test_pass",
+    db_name="test_db"
+)
+print("\nKonfigurasi Database (Test Override):")
+print(f"  Host : {db_test.db_host}")
+print(f"  DB   : {db_test.db_name}")
+
+# --- Contoh 6: Validasi tipe otomatis (sama seperti BaseModel) ---
+# BaseSettings tetap melakukan validasi tipe, termasuk coercion dari string env var
+
+os.environ["APP_HOST"] = "0.0.0.0"
+os.environ["APP_PORT"] = "9000"   # String di env, otomatis dikonversi ke int
+os.environ["APP_RELOAD"] = "true" # String di env, otomatis dikonversi ke bool
+
+server = ServerSettings()
+print("\nKonfigurasi Server (env_prefix='APP_'):")
+print(f"  Host   : {server.host}")
+print(f"  Port   : {server.port} (tipe: {type(server.port).__name__})")  # int
+print(f"  Reload : {server.reload} (tipe: {type(server.reload).__name__})")  # bool
+
+# --- CATATAN PENTING: File .env & Keamanan ---
+#
+# ⚠️  File .env JANGAN pernah di-commit ke Git/GitHub karena berisi data sensitif!
+#
+# Tambahkan ke .gitignore:
+#     .env
+#     .env.local
+#     .env.production
+#
+# ✅ Gunakan .env.example (berisi nama key tanpa value asli) untuk referensi tim:
+#     DB_HOST=
+#     DB_PORT=
+#     DB_USER=
+#     DB_PASSWORD=
+#     DB_NAME=
+
+
+# =============================================================================
 # RINGKASAN PROGRES BELAJAR
 # =============================================================================
 #
@@ -551,15 +1282,18 @@ print(f"model_dump(): {obj_allow.model_dump()}")
 # ✅ D. Penanganan ValidationError   - try-except, exc.errors(), struktur error
 # ✅ E. Pesan error kustom           - ERROR_MESSAGES, format_validation_errors()
 # ✅ F. Validasi input vs business logic - pemisahan tanggung jawab
-# 📖 G. model_validator              - Konsep dipahami, perlu latihan lebih
+# 📖 G. model_validator              - Konsep dipahami, cross-field validation
 # ✅ H. model_dump() / model_dump_json() - Serialisasi ke dict dan JSON string
 # ✅ I. model_validate() / model_validate_json() - Deserialisasi dari dict/JSON
 # ✅ J. Konfigurasi extra            - ignore (default), forbid, allow
+# ✅ K. field_validator              - Validasi custom per field, mode before/after
+# ✅ L. Alias                        - Field(alias=...), validation_alias, serialization_alias, populate_by_name
+# ✅ M. Nested Models                - Model bersarang, rekursif validasi, error path
+# ✅ N. Alias Path & Alias Choices   - AliasPath (flattening data), AliasChoices (fallback alias)
+# ✅ O. Strict Mode                  - strict=True di Field atau ConfigDict, mematikan coercion
+# ✅ P. BaseSettings                 - pydantic-settings, .env loading, SettingsConfigDict, env_prefix
 #
 # --- MATERI SELANJUTNYA (Belum dipelajari) ---
-# ❌ field_validator               - Validasi custom untuk 1 field tertentu
-# ❌ Nested models                 - Model di dalam model
-# ❌ model_config (Config class)   - Konfigurasi model lainnya (strict mode, dll.)
 # ❌ Annotated types               - Menggabungkan type hints dengan metadata
 # ❌ Generic models                - Model dengan tipe generik
 # =============================================================================
